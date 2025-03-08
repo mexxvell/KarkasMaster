@@ -13,7 +13,7 @@ bot = telebot.TeleBot(API_TOKEN)
 user_data = {}
 
 EMOJI = {
-    'foundation': '🏛️',
+    'foundation': '🏗️',
     'roof': '🏛️',
     'insulation': '❄️',
     'exterior': '🎨',
@@ -21,12 +21,17 @@ EMOJI = {
     'utilities': '⚡',
     'windows': '🪟',
     'doors': '🚪',
-    'terrace': '🌳'
+    'terrace': '🌳',
+    'region': '📍'
 }
 
 COSTS = {
     'materials': {
-        'foundation': 15000,
+        'foundation': {
+            'Свайно-винтовой': 15000,
+            'Ленточный': 20000,
+            'Плитный': 25000
+        },
         'roof': {
             'Металлочерепица': 1200,
             'Мягкая кровля': 800,
@@ -34,9 +39,9 @@ COSTS = {
             'Пропустить': 0
         },
         'insulation': {
-            'Минеральная вата': 500,
-            'Эковата': 400,
-            'Пенополистирол': 600,
+            'Минеральная вата': {'price': 500, 'min_thickness': 150},
+            'Эковата': {'price': 400, 'min_thickness': 200},
+            'Пенополистирол': {'price': 600, 'min_thickness': 100},
             'Пропустить': 0
         },
         'exterior': {
@@ -58,17 +63,36 @@ COSTS = {
         }
     },
     'work': {
-        'base': 8000,
+        'base': {
+            'price': 8000,
+            'floor_multiplier': {
+                'Одноэтажный': 1.0,
+                'Двухэтажный': 0.9,
+                'С мансардой': 1.2
+            }
+        },
         'terrace': 3000,
         'basement': 1500
     }
 }
 
+REGIONAL_COEFFICIENTS = {
+    'Москва': 1.5,
+    'СПб': 1.3,
+    'Другой': 1.0
+}
+
 QUESTIONS = [
+    {
+        'text': '📍 Регион строительства:',
+        'options': ['Москва', 'СПб', 'Другой'],
+        'key': 'region'
+    },
     {
         'text': '🏡 Площадь дома (кв.м):',
         'options': ['100 м²', '120 м²', '150 м²', 'Пропустить'],
-        'key': 'area'
+        'key': 'area',
+        'max': 1000
     },
     {
         'text': 'Этажность 🏠:',
@@ -77,8 +101,8 @@ QUESTIONS = [
     },
     {
         'text': 'Фундамент 🏗️:',
-        'key': 'foundation',
-        'auto_value': 'свайно-винтовой'
+        'options': ['Свайно-винтовой', 'Ленточный', 'Плитный', 'Пропустить'],
+        'key': 'foundation'
     },
     {
         'text': 'Кровля:',
@@ -93,7 +117,9 @@ QUESTIONS = [
     {
         'text': 'Толщина утеплителя (мм) 📏:',
         'type': 'number',
-        'key': 'insulation_thickness'
+        'key': 'insulation_thickness',
+        'min': 50,
+        'max': 500
     },
     {
         'text': 'Внешняя отделка 🎨:',
@@ -108,22 +134,26 @@ QUESTIONS = [
     {
         'text': 'Количество окон 🪟:',
         'type': 'number',
-        'key': 'windows_count'
+        'key': 'windows_count',
+        'max': 50
     },
     {
         'text': 'Входные двери 🚪:',
         'type': 'number',
-        'key': 'entrance_doors'
+        'key': 'entrance_doors',
+        'max': 10
     },
     {
         'text': 'Межкомнатные двери 🚪:',
         'type': 'number',
-        'key': 'inner_doors'
+        'key': 'inner_doors',
+        'max': 30
     },
     {
         'text': 'Терраса/балкон (кв.м) 🌳:',
         'type': 'number',
-        'key': 'terrace_area'
+        'key': 'terrace_area',
+        'max': 200
     },
     {
         'text': 'Инженерные сети ⚡ (выберите все):',
@@ -135,11 +165,27 @@ QUESTIONS = [
 
 TOTAL_STEPS = len(QUESTIONS)
 
+def calculate_roof_area(data):
+    area = data.get('area', 100)
+    floors = data.get('floors', 'Одноэтажный')
+    
+    if floors == 'Двухэтажный':
+        return area * 0.6
+    elif floors == 'С мансардой':
+        return area * 1.1
+    return area * 0.8
+
+def apply_discounts(total, data):
+    selected_items = sum(1 for k in data if data.get(k) and k not in ['area', 'floors', 'region'])
+    if selected_items > 5:
+        total *= 0.9
+    if data.get('area', 0) > 200:
+        total *= 0.95
+    return total
+
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.chat.id
-    if user_id in user_data:
-        del user_data[user_id]
     user_data[user_id] = {'step': 0}
     ask_next_question(user_id)
 
@@ -151,7 +197,7 @@ def ask_next_question(user_id):
     
     question = QUESTIONS[current_step]
     text = question['text']
-    progress = f"Шаг {current_step + 1} из {TOTAL_STEPS}\n\n{text}"
+    progress = f"Шаг {current_step + 1} из {TOTAL_STEPS}\n{text}"
     
     if 'options' in question:
         emoji_char = EMOJI.get(question['key'], '')
@@ -165,123 +211,152 @@ def ask_next_question(user_id):
         markup = types.ReplyKeyboardRemove()
     
     bot.send_message(user_id, progress, reply_markup=markup)
-    
-    if 'auto_value' in question:
-        user_data[user_id][question['key']] = question['auto_value']
-        user_data[user_id]['step'] = current_step + 1
-        ask_next_question(user_id)
-    else:
-        bot.register_next_step_handler_by_chat_id(user_id, process_answer, current_step=current_step)
+    bot.register_next_step_handler_by_chat_id(user_id, process_answer, current_step=current_step)
 
 def process_answer(message, current_step):
     user_id = message.chat.id
     question = QUESTIONS[current_step]
     answer = message.text.strip()
     
-    if 'options' in question:
-        emoji_char = EMOJI.get(question['key'], '')
-        clean_answer = answer.replace(f"{emoji_char} ", "").strip()
-        options = question['options']
-        
-        if clean_answer not in options and clean_answer != 'Пропустить':
-            bot.send_message(user_id, 'Выберите вариант из списка')
-            ask_next_question(user_id)
-            return
-        
-        if clean_answer == 'Пропустить':
-            user_data[user_id][question['key']] = None
-        else:
-            if question['key'] == 'area':
-                try:
-                    user_data[user_id][question['key']] = int(clean_answer.split()[0])
-                except:
-                    bot.send_message(user_id, 'Некорректный формат. Введите число.')
-                    ask_next_question(user_id)
-                    return
-            else:
-                user_data[user_id][question['key']] = clean_answer
-    else:
-        try:
+    try:
+        if 'options' in question:
+            emoji_char = EMOJI.get(question['key'], '')
+            clean_answer = answer.replace(f"{emoji_char} ", "").strip()
+            
+            if clean_answer not in question['options'] and clean_answer != 'Пропустить':
+                raise ValueError("Неверный вариант")
+            
+            user_data[user_id][question['key']] = clean_answer if clean_answer != 'Пропустить' else None
+            
+        elif question.get('type') == 'number':
             value = float(answer)
+            
+            if 'min' in question and value < question['min']:
+                raise ValueError(f"Минимальное значение: {question['min']}")
+                
+            if 'max' in question and value > question['max']:
+                raise ValueError(f"Максимальное значение: {question['max']}")
+                
             user_data[user_id][question['key']] = value
-        except:
-            bot.send_message(user_id, 'Введите число')
-            ask_next_question(user_id)
-            return
+            
+        elif question.get('multiple'):
+            user_data[user_id][question['key']] = answer.split(', ')
+            
+    except Exception as e:
+        error_msg = f"Ошибка: {str(e)}\nПожалуйста, введите корректные данные."
+        bot.send_message(user_id, error_msg)
+        return ask_next_question(user_id)
     
-    user_data[user_id]['step'] = current_step + 1
+    user_data[user_id]['step'] += 1
     ask_next_question(user_id)
 
 def calculate_cost(data):
     total = 0
-    total += data.get('area', 100) * COSTS['work']['base']
-    total += COSTS['materials']['foundation']
+    details = []
+    
+    # Основные работы
+    floor_type = data.get('floors', 'Одноэтажный')
+    base_price = COSTS['work']['base']['price']
+    multiplier = COSTS['work']['base']['floor_multiplier'].get(floor_type, 1.0)
+    area = data.get('area', 100)
+    base_cost = area * base_price * multiplier
+    total += base_cost
+    details.append(f"Основные работы ({floor_type}): {base_cost:,.0f} руб.")
+    
+    # Фундамент
+    foundation_type = data.get('foundation')
+    if foundation_type and foundation_type != 'Пропустить':
+        foundation_cost = COSTS['materials']['foundation'].get(foundation_type, 0)
+        total += foundation_cost
+        details.append(f"Фундамент ({foundation_type}): {foundation_cost:,.0f} руб.")
     
     # Кровля
     roof_type = data.get('roof')
     if roof_type and roof_type != 'Пропустить':
-        roof_area = data.get('area', 100) * 0.8
-        total += roof_area * COSTS['materials']['roof'].get(roof_type, 0)
+        roof_area = calculate_roof_area(data)
+        roof_cost = roof_area * COSTS['materials']['roof'].get(roof_type, 0)
+        total += roof_cost
+        details.append(f"Кровля ({roof_type}): {roof_cost:,.0f} руб.")
     
     # Утеплитель
     insulation_type = data.get('insulation')
     if insulation_type and insulation_type != 'Пропустить':
-        insulation_cost = (data.get('insulation_thickness', 150) / 100) * data.get('area', 100) * \
-            COSTS['materials']['insulation'].get(insulation_type, 0)
+        min_thickness = COSTS['materials']['insulation'][insulation_type]['min_thickness']
+        actual_thickness = max(data.get('insulation_thickness', 0), min_thickness)
+        insulation_cost = (actual_thickness / 100) * area * COSTS['materials']['insulation'][insulation_type]['price']
         total += insulation_cost
+        details.append(f"Утеплитель ({insulation_type}): {insulation_cost:,.0f} руб.")
     
     # Внешняя отделка
     exterior_type = data.get('exterior')
     if exterior_type and exterior_type != 'Пропустить':
-        total += data.get('area', 100) * COSTS['materials']['exterior'].get(exterior_type, 0)
+        exterior_cost = area * COSTS['materials']['exterior'].get(exterior_type, 0)
+        total += exterior_cost
+        details.append(f"Внешняя отделка ({exterior_type}): {exterior_cost:,.0f} руб.")
     
     # Внутренняя отделка
     interior_type = data.get('interior')
     if interior_type and interior_type != 'Пропустить':
-        total += data.get('area', 100) * COSTS['materials']['interior'].get(interior_type, 0)
+        interior_cost = area * COSTS['materials']['interior'].get(interior_type, 0)
+        total += interior_cost
+        details.append(f"Внутренняя отделка ({interior_type}): {interior_cost:,.0f} руб.")
     
     # Окна и двери
-    windows = data.get('windows_count', 0) * COSTS['materials']['windows']
-    doors = (data.get('entrance_doors', 0) * 15000) + (data.get('inner_doors', 0) * 8000)
-    total += windows + doors
+    windows_cost = data.get('windows_count', 0) * COSTS['materials']['windows']
+    entrance_doors_cost = data.get('entrance_doors', 0) * 15000
+    inner_doors_cost = data.get('inner_doors', 0) * 8000
+    doors_windows_total = windows_cost + entrance_doors_cost + inner_doors_cost
+    total += doors_windows_total
+    details.append(f"Окна/двери: {doors_windows_total:,.0f} руб.")
     
     # Терраса
     terrace_area = data.get('terrace_area', 0)
-    total += terrace_area * COSTS['work']['terrace']
+    terrace_cost = terrace_area * COSTS['work']['terrace']
+    total += terrace_cost
+    if terrace_area > 0:
+        details.append(f"Терраса: {terrace_cost:,.0f} руб.")
     
     # Инженерные сети
-    utility_cost = calculate_utility_cost(data)
+    utility_cost = sum(
+        50000 if 'Электрика' in data.get('utilities', []) else 0,
+        30000 if 'Водоснабжение' in data.get('utilities', []) else 0,
+        25000 if 'Канализация' in data.get('utilities', []) else 0,
+        40000 if 'Отопление' in data.get('utilities', []) else 0
+    )
     total += utility_cost
+    if utility_cost > 0:
+        details.append(f"Инженерные сети: {utility_cost:,.0f} руб.")
     
-    return round(total, 2)
-
-def calculate_utility_cost(data):
-    utilities = data.get('utilities', [])
-    total = 0
-    for utility in utilities:
-        if utility == 'Электрика':
-            total += 50000
-        elif utility == 'Водоснабжение':
-            total += 30000
-        elif utility == 'Канализация':
-            total += 25000
-        elif utility == 'Отопление':
-            total += 40000
-    return total
+    # Региональный коэффициент
+    region = data.get('region', 'Другой')
+    regional_coeff = REGIONAL_COEFFICIENTS.get(region, 1.0)
+    total *= regional_coeff
+    details.append(f"Региональный коэффициент ({region}): x{regional_coeff}")
+    
+    # Применение скидок
+    total_before_discount = total
+    total = apply_discounts(total, data)
+    if total < total_before_discount:
+        details.append(f"Скидка: {total_before_discount - total:,.0f} руб.")
+    
+    return round(total, 2), details
 
 def calculate_and_send_result(user_id):
-    data = user_data[user_id]
     try:
-        total = calculate_cost(data)
-        result = f"💰 Общая стоимость: {total} руб.\n\n" \
-                 f"Расчет включает:\n" \
-                 f"• Основные работы: {data.get('area', 100) * COSTS['work']['base']} руб.\n" \
-                 f"• Фундамент: {COSTS['materials']['foundation']} руб.\n" \
-                 f"• Кровля: {data.get('roof', 'Не выбрано')} - {COSTS['materials']['roof'].get(data.get('roof'), 0) * data.get('area', 100) * 0.8} руб.\n" \
-                 f"• Инженерные сети: {calculate_utility_cost(data)} руб."
-        bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
+        data = user_data[user_id]
+        total, details = calculate_cost(data)
+        
+        result = [
+            "📊 Детализированный расчет стоимости:",
+            *details,
+            "────────────────────────",
+            f"💰 Итоговая стоимость: {total:,.0f} руб."
+        ]
+        
+        bot.send_message(user_id, "\n".join(result), parse_mode='Markdown')
+        
     except Exception as e:
-        bot.send_message(user_id, f"Ошибка: {str(e)}")
+        bot.send_message(user_id, f"⚠️ Ошибка расчета: {str(e)}")
     finally:
         if user_id in user_data:
             del user_data[user_id]
@@ -290,16 +365,13 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Бот работает!"
+    return "Construction Bot работает!"
 
 def start_bot():
-    bot.remove_webhook()
     bot.polling(none_stop=True)
 
 if __name__ == '__main__':
     bot_thread = threading.Thread(target=start_bot)
     bot_thread.daemon = True
     bot_thread.start()
-    
-    port = int(os.getenv('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
