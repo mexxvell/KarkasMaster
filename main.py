@@ -209,21 +209,49 @@ def calculate_cost(data):
     total += data['area'] * COSTS['work']['base']
     # Фундамент (автоматически свайно-винтовой)
     total += COSTS['materials']['foundation']
-    # Далее остальные расчеты...
-    # (оставляю только важные части для примера)
+    
+    # Кровля
+    roof_type = data['roof'].lower()
+    total += data['area'] * COSTS['materials']['roof'][roof_type]
+    
+    # Утеплитель
+    insulation_type = data['insulation'].lower()
+    insulation_thickness = data['insulation_thickness']
+    total += data['area'] * COSTS['materials']['insulation'][insulation_type] * (insulation_thickness / 100)
+    
+    # Внешняя отделка
+    exterior_type = data['exterior'].lower()
+    total += data['area'] * COSTS['materials']['exterior'][exterior_type]
+    
+    # Внутренняя отделка
+    interior_type = data['interior'].lower()
+    total += data['area'] * COSTS['materials']['interior'][interior_type]
+    
+    # Окна и двери
+    total += data.get('windows_count', 0) * COSTS['materials']['windows']
+    total += data.get('entrance_doors', 0) * COSTS['materials']['doors']['входная']
+    total += data.get('inner_doors', 0) * COSTS['materials']['doors']['межкомнатная']
+    
+    # Терраса
+    total += data.get('terrace_area', 0) * COSTS['work']['terrace']
+    
+    # Инженерные сети
+    total += calculate_utility_cost(data)
+    
     return round(total, 2)
 
 def calculate_and_send_result(user_id):
     data = user_data[user_id]
     try:
         total = calculate_cost(data)
-        result = f"💰 Общая стоимость: {total} руб."
+        additions = calculate_additions(data)
+        final_total = total + additions
+        result = f"💰 Общая стоимость: {final_total} руб."
         bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
-    except:
-        bot.send_message(user_id, "Ошибка: проверьте данные")
+    except Exception as e:
+        bot.send_message(user_id, f"Ошибка: проверьте данные ({e})")
     finally:
         del user_data[user_id]
-
 
 def calculate_utility_cost(data):
     utilities = data.get('utilities', [])
