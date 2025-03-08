@@ -246,22 +246,6 @@ def calculate_cost(data):
     
     return round(total, 2)
 
-def calculate_and_send_result(user_id):
-    data = user_data[user_id]
-    try:
-        total = calculate_cost(data)
-        result = f"💰 Общая стоимость: {total} руб.\n\n" \
-                 f"Расчет включает:\n" \
-                 f"• Основные работы: {data['area'] * COSTS['work']['base']} руб.\n" \
-                 f"• Фундамент: {COSTS['materials']['foundation'].get(data['foundation'], 0)} руб.\n" \
-                 f"• Инженерные сети: {calculate_utility_cost(data)} руб.\n" \
-                 f"• Дополнительные элементы: {calculate_additions(data)} руб."
-        bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
-    except Exception as e:
-        bot.send_message(user_id, "Ошибка: проверьте корректность данных.")
-    finally:
-        del user_data[user_id]
-
 def calculate_utility_cost(data):
     utilities = data.get('utilities', [])
     total = 0
@@ -284,6 +268,22 @@ def calculate_additions(data):
     additions += data.get('terrace_area', 0) * 3000  # терраса
     return additions
 
+def calculate_and_send_result(user_id):
+    data = user_data[user_id]
+    try:
+        total = calculate_cost(data)
+        result = f"💰 Общая стоимость: {total} руб.\n\n" \
+                 f"Расчет включает:\n" \
+                 f"• Основные работы: {data['area'] * COSTS['work']['base']} руб.\n" \
+                 f"• Фундамент: {COSTS['materials']['foundation'].get(data['foundation'], 0)} руб.\n" \
+                 f"• Инженерные сети: {calculate_utility_cost(data)} руб.\n" \
+                 f"• Дополнительные элементы: {calculate_additions(data)} руб."
+        bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
+    except Exception as e:
+        bot.send_message(user_id, "Ошибка: проверьте корректность данных.")
+    finally:
+        del user_data[user_id]
+
 # Flask setup
 app = Flask(__name__)
 
@@ -292,12 +292,22 @@ def home():
     return "Бот работает!"
 
 def start_bot():
+    # Удаляем все предыдущие вебхуки и обновления
     bot.remove_webhook()
     bot.delete_webhook()
-    bot.infinity_polling(skip_pending=True)
+    
+    # Ждем 3 секунды, чтобы предыдущие сессии завершились
+    import time
+    time.sleep(3)
+    
+    # Запускаем polling с очисткой
+    bot.infinity_polling(
+        skip_pending=True,
+        timeout=60  # Увеличиваем таймаут для стабильности
+    )
 
 if __name__ == '__main__':
-    bot_thread = threading.Thread(target=start_bot)
+    bot_thread = threading.Thread(target=start_bot, name="BotThread")
     bot_thread.daemon = True
     bot_thread.start()
     
