@@ -160,12 +160,19 @@ def home():
     return "Бот работает!"
 
 def start_bot():
+    # Удаляем предыдущий вебхук и обновления
     bot.remove_webhook()
+    bot.delete_webhook()
+    
+    # Запускаем polling с очисткой
     bot.infinity_polling(skip_pending=True)
 
 if __name__ == '__main__':
+    # Запускаем бота в фоновом потоке
     bot_thread = threading.Thread(target=start_bot)
     bot_thread.daemon = True
     bot_thread.start()
+    
+    # Запускаем Flask
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
