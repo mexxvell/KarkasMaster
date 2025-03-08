@@ -65,7 +65,7 @@ COSTS = {
 QUESTIONS = [
     {
         'text': '🏡 Площадь дома (кв.м):',
-        'options': ['100 м2', '120 м2', '150 м2'],
+        'options': ['100 м²', '120 м²', '150 м²'],
         'key': 'area'
     },
     {
@@ -166,11 +166,10 @@ def ask_next_question(user_id):
         user_data[user_id]['step'] += 1
         ask_next_question(user_id)
     else:
-        bot.register_next_step_handler_by_chat_id(user_id, process_answer)
+        bot.register_next_step_handler_by_chat_id(user_id, process_answer, current_step=current_step)
 
-def process_answer(message):
+def process_answer(message, current_step):
     user_id = message.chat.id
-    current_step = user_data[user_id]['step']
     question = QUESTIONS[current_step]
     answer = message.text.strip()
     
@@ -186,7 +185,7 @@ def process_answer(message):
                 bot.send_message(user_id, 'Выберите вариант из списка')
                 ask_next_question(user_id)
                 return
-            # Convert area answer to a number
+            # Преобразование площади в число
             if question['key'] == 'area':
                 user_data[user_id][question['key']] = int(answer.split()[0])
             else:
@@ -200,7 +199,7 @@ def process_answer(message):
             ask_next_question(user_id)
             return
     
-    user_data[user_id]['step'] += 1
+    user_data[user_id]['step'] = current_step + 1
     ask_next_question(user_id)
 
 def calculate_cost(data):
@@ -209,47 +208,40 @@ def calculate_cost(data):
     total += data['area'] * COSTS['work']['base']
     # Фундамент (автоматически свайно-винтовой)
     total += COSTS['materials']['foundation']
-    
     # Кровля
-    roof_type = data['roof'].lower()
-    total += data['area'] * COSTS['materials']['roof'][roof_type]
-    
+    roof_type = data.get('roof', '')
+    roof_area = data['area'] * 0.8  # примерная площадь кровли
+    total += roof_area * COSTS['materials']['roof'].get(roof_type, 0)
     # Утеплитель
-    insulation_type = data['insulation'].lower()
-    insulation_thickness = data['insulation_thickness']
-    total += data['area'] * COSTS['materials']['insulation'][insulation_type] * (insulation_thickness / 100)
-    
+    insulation_type = data.get('insulation', '')
+    insulation_cost = (data['insulation_thickness'] / 100) * data['area'] * \
+        COSTS['materials']['insulation'].get(insulation_type, 0)
+    total += insulation_cost
     # Внешняя отделка
-    exterior_type = data['exterior'].lower()
-    total += data['area'] * COSTS['materials']['exterior'][exterior_type]
-    
+    total += data['area'] * COSTS['materials']['exterior'].get(data['exterior'], 0)
     # Внутренняя отделка
-    interior_type = data['interior'].lower()
-    total += data['area'] * COSTS['materials']['interior'][interior_type]
-    
+    total += data['area'] * COSTS['materials']['interior'].get(data['interior'], 0)
     # Окна и двери
-    total += data.get('windows_count', 0) * COSTS['materials']['windows']
-    total += data.get('entrance_doors', 0) * COSTS['materials']['doors']['входная']
-    total += data.get('inner_doors', 0) * COSTS['materials']['doors']['межкомнатная']
-    
+    windows = data.get('windows_count', 0) * COSTS['materials']['windows']
+    doors = (data.get('entrance_doors', 0) * COSTS['materials']['doors']['входная']) + \
+            (data.get('inner_doors', 0) * COSTS['materials']['doors']['межкомнатная'])
+    total += windows + doors
     # Терраса
-    total += data.get('terrace_area', 0) * COSTS['work']['terrace']
-    
+    terrace_area = data.get('terrace_area', 0)
+    total += terrace_area * COSTS['work']['terrace']
     # Инженерные сети
-    total += calculate_utility_cost(data)
-    
+    utility_cost = calculate_utility_cost(data)
+    total += utility_cost
     return round(total, 2)
 
 def calculate_and_send_result(user_id):
     data = user_data[user_id]
     try:
         total = calculate_cost(data)
-        additions = calculate_additions(data)
-        final_total = total + additions
-        result = f"💰 Общая стоимость: {final_total} руб."
+        result = f"💰 Общая стоимость: {total} руб."
         bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
     except Exception as e:
-        bot.send_message(user_id, f"Ошибка: проверьте данные ({e})")
+        bot.send_message(user_id, "Ошибка: проверьте данные")
     finally:
         del user_data[user_id]
 
