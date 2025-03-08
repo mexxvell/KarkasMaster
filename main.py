@@ -65,7 +65,7 @@ COSTS = {
 QUESTIONS = [
     {
         'text': '🏡 Площадь дома (кв.м):',
-        'type': 'number',
+        'options': ['100 м2', '120 м2', '150 м2'],
         'key': 'area'
     },
     {
@@ -168,9 +168,10 @@ def ask_next_question(user_id):
     else:
         bot.register_next_step_handler_by_chat_id(user_id, process_answer)
 
-def process_answer(message, step):
+def process_answer(message):
     user_id = message.chat.id
-    question = QUESTIONS[step]
+    current_step = user_data[user_id]['step']
+    question = QUESTIONS[current_step]
     answer = message.text.strip()
     
     if 'options' in question:
@@ -185,7 +186,11 @@ def process_answer(message, step):
                 bot.send_message(user_id, 'Выберите вариант из списка')
                 ask_next_question(user_id)
                 return
-            user_data[user_id][question['key']] = answer
+            # Convert area answer to a number
+            if question['key'] == 'area':
+                user_data[user_id][question['key']] = int(answer.split()[0])
+            else:
+                user_data[user_id][question['key']] = answer
     else:
         try:
             value = float(answer)
