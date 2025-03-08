@@ -12,7 +12,20 @@ bot = telebot.TeleBot(API_TOKEN)
 
 user_data = {}
 
-# Параметры для расчета
+# Добавлены эмодзи для категорий
+EMOJI = {
+    'foundation': '🏛️',
+    'roof': '葺',
+    'insulation': '❄️',
+    'exterior': 'Facade 🖌️',
+    'interior': 'Interior 🛋️',
+    'utilities': 'Utilities ⚡',
+    'windows': 'Window 🪟',
+    'doors': 'Door 🚪',
+    'terrace': 'Terrace 🌳'
+}
+
+# Параметры для расчета с эмодзи
 COSTS = {
     'materials': {
         'foundation': {
@@ -55,67 +68,67 @@ COSTS = {
 
 QUESTIONS = [
     {
-        'text': 'Укажите площадь дома (кв.м):',
+        'text': '🏡 Площадь дома (кв.м):',
         'type': 'number',
         'key': 'area'
     },
     {
-        'text': 'Выберите этажность:',
+        'text': 'этажность 🏠:',
         'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой'],
         'key': 'floors'
     },
     {
-        'text': 'Тип фундамента:',
+        'text': 'Фундамент 🏗️:',
         'options': ['Свайно-винтовой', 'Ленточный', 'Плита'],
         'key': 'foundation'
     },
     {
-        'text': 'Тип кровли:',
+        'text': 'Кровля 🏛️:',
         'options': ['Металлочерепица', 'Мягкая кровля', 'Фальцевая кровля'],
         'key': 'roof'
     },
     {
-        'text': 'Тип утеплителя:',
+        'text': 'Утеплитель ❄️:',
         'options': ['Минеральная вата', 'Эковата', 'Пенополистирол'],
         'key': 'insulation'
     },
     {
-        'text': 'Толщина утеплителя (мм):',
+        'text': 'Толщина утеплителя (мм) 📏:',
         'type': 'number',
         'key': 'insulation_thickness'
     },
     {
-        'text': 'Внешняя отделка:',
+        'text': 'Внешняя отделка 🎨:',
         'options': ['Сайдинг', 'Вагонка', 'Штукатурка'],
         'key': 'exterior'
     },
     {
-        'text': 'Внутренняя отделка:',
+        'text': 'Внутренняя отделка 🛋️:',
         'options': ['Вагонка', 'Гипсокартон', 'Другое'],
         'key': 'interior'
     },
     {
-        'text': 'Количество стандартных окон:',
+        'text': 'Количество окон 🪟:',
         'type': 'number',
         'key': 'windows_count'
     },
     {
-        'text': 'Количество входных дверей:',
+        'text': 'Входные двери 🚪:',
         'type': 'number',
         'key': 'entrance_doors'
     },
     {
-        'text': 'Количество межкомнатных дверей:',
+        'text': 'Межкомнатные двери 🚪:',
         'type': 'number',
         'key': 'inner_doors'
     },
     {
-        'text': 'Наличие террасы/балкона (кв.м):',
+        'text': 'Терраса/балкон (кв.м) 🌳:',
         'type': 'number',
         'key': 'terrace_area'
     },
     {
-        'text': 'Инженерные сети (выберите все что нужно):',
+        'text': 'Инженерные сети ⚡ (выберите все):',
         'options': ['Электрика', 'Водоснабжение', 'Канализация', 'Отопление'],
         'multiple': True,
         'key': 'utilities'
@@ -139,12 +152,12 @@ def ask_next_question(user_id, step):
     text = question['text']
     
     if 'options' in question:
-        # Создаем клавиатуру
+        # Создаем клавиатуру с эмодзи
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        markup.add(*question['options'])
+        markup.add(*[f"{emoji} {opt}" for opt in question['options']])
+        
         bot.send_message(user_id, text, reply_markup=markup)
     else:
-        # Числовой ввод
         bot.send_message(user_id, text)
     
     bot.register_next_step_handler_by_chat_id(user_id, process_answer, step=step)
@@ -155,12 +168,19 @@ def process_answer(message, step):
     answer = message.text.strip()
     
     if 'options' in question:
-        if answer not in question['options']:
-            bot.send_message(user_id, 'Выберите вариант из списка')
-            ask_next_question(user_id, step)
-            return
-        
-        user_data[user_id][question['key']] = answer
+        if 'multiple' in question and question['multiple']:
+            # Обработка множественного выбора
+            selected = []
+            for option in question['options']:
+                if option in answer:
+                    selected.append(option)
+            user_data[user_id][question['key']] = selected
+        else:
+            if answer not in question['options']:
+                bot.send_message(user_id, 'Выберите вариант из списка')
+                ask_next_question(user_id, step)
+                return
+            user_data[user_id][question['key']] = answer
     else:
         try:
             value = float(answer)
@@ -176,56 +196,90 @@ def process_answer(message, step):
 def calculate_cost(data):
     total = 0
     
-    # Расчет материалов
-    materials = [
-        data.get('foundation'),
-        data.get('roof'),
-        data.get('insulation'),
-        data.get('exterior'),
-        data.get('interior')
-    ]
-    
+    # Основные работы
     total += data['area'] * COSTS['work']['base']
     
-    # Дополнительные материалы
-    total += COSTS['materials']['foundation'].get(data['foundation'], 0)
-    total += data['roof_area'] * COSTS['materials']['roof'].get(data['roof'], 0)
-    total += (data['insulation_thickness'] / 100) * data['area'] * COSTS['materials']['insulation'].get(data['insulation'], 0)
+    # Фундамент
+    foundation_cost = COSTS['materials']['foundation'].get(data['foundation'], 0)
+    total += foundation_cost
+    
+    # Кровля
+    roof_area = data['area'] * 0.8  # примерная площадь кровли
+    total += roof_area * COSTS['materials']['roof'].get(data['roof'], 0)
+    
+    # Утеплитель
+    insulation_cost = (data['insulation_thickness'] / 100) * data['area'] * \
+        COSTS['materials']['insulation'].get(data['insulation'], 0)
+    total += insulation_cost
+    
+    # Внешняя отделка
     total += data['area'] * COSTS['materials']['exterior'].get(data['exterior'], 0)
+    
+    # Внутренняя отделка
     total += data['area'] * COSTS['materials']['interior'].get(data['interior'], 0)
     
     # Окна и двери
-    total += data['windows_count'] * COSTS['materials']['windows']
-    total += data['entrance_doors'] * COSTS['materials']['doors']['входная']
-    total += data['inner_doors'] * COSTS['materials']['doors']['межкомнатная']
+    windows = data.get('windows_count', 0) * COSTS['materials']['windows']
+    doors = (data.get('entrance_doors', 0) * COSTS['materials']['doors']['входная']) + \
+            (data.get('inner_doors', 0) * COSTS['materials']['doors']['межкомнатная'])
+    total += windows + doors
     
     # Терраса
-    total += data.get('terrace_area', 0) * COSTS['work']['terrace']
+    terrace_area = data.get('terrace_area', 0)
+    total += terrace_area * COSTS['work']['terrace']
     
     # Инженерные сети
     utility_cost = 0
-    if 'Электрика' in data['utilities']:
-        utility_cost += 50000
-    if 'Водоснабжение' in data['utilities']:
-        utility_cost += 30000
-    if 'Канализация' in data['utilities']:
-        utility_cost += 25000
-    if 'Отопление' in data['utilities']:
-        utility_cost += 40000
+    for utility in data.get('utilities', []):
+        if utility == 'Электрика':
+            utility_cost += 50000
+        elif utility == 'Водоснабжение':
+            utility_cost += 30000
+        elif utility == 'Канализация':
+            utility_cost += 25000
+        elif utility == 'Отопление':
+            utility_cost += 40000
     total += utility_cost
     
-    return total
+    return round(total, 2)
 
 def calculate_and_send_result(user_id):
     data = user_data[user_id]
     try:
         total = calculate_cost(data)
-        result = f"Общая стоимость: {total:.2f} руб."
+        result = f"💰 Общая стоимость: {total} руб.\n\n" \
+                 f"Расчет включает:\n" \
+                 f"• Основные работы: {data['area'] * COSTS['work']['base']} руб.\n" \
+                 f"• Фундамент: {COSTS['materials']['foundation'].get(data['foundation'], 0)} руб.\n" \
+                 f"• Инженерные сети: {calculate_utility_cost(data)} руб.\n" \
+                 f"• Дополнительные элементы: {calculate_additions(data)} руб."
         bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
     except Exception as e:
         bot.send_message(user_id, "Ошибка: проверьте корректность данных.")
     finally:
         del user_data[user_id]
+
+def calculate_utility_cost(data):
+    utilities = data.get('utilities', [])
+    total = 0
+    for utility in utilities:
+        if utility == 'Электрика':
+            total += 50000
+        elif utility == 'Водоснабжение':
+            total += 30000
+        elif utility == 'Канализация':
+            total += 25000
+        elif utility == 'Отопление':
+            total += 40000
+    return total
+
+def calculate_additions(data):
+    additions = 0
+    additions += data.get('windows_count', 0) * 5000  # окна
+    additions += data.get('entrance_doors', 0) * 15000  # входные двери
+    additions += data.get('inner_doors', 0) * 8000  # межкомнатные двери
+    additions += data.get('terrace_area', 0) * 3000  # терраса
+    return additions
 
 # Flask setup
 app = Flask(__name__)
