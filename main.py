@@ -28,7 +28,7 @@ EMOJI = {
 # Параметры для расчета
 COSTS = {
     'materials': {
-        'foundation': 15000,  # Теперь фиксировано
+        'foundation': 15000,  # Фиксированный фундамент
         'roof': {
             'металлочерепица': 1200,
             'мягкая кровля': 800,
@@ -75,7 +75,7 @@ QUESTIONS = [
     },
     {
         'text': 'Фундамент 🏗️:',
-        'key': 'foundation',  # Автоматически выбираем свайно-винтовой
+        'key': 'foundation',
         'auto_value': 'свайно-винтовой'
     },
     {
@@ -147,8 +147,6 @@ def ask_next_question(user_id):
     
     question = QUESTIONS[current_step]
     text = question['text']
-    
-    # Добавляем прогресс-бар
     progress = f"Шаг {current_step+1} из {TOTAL_STEPS}\n\n{text}"
     
     if 'options' in question:
@@ -160,7 +158,7 @@ def ask_next_question(user_id):
     
     bot.send_message(user_id, progress, reply_markup=markup)
     
-    # Автоматически переход, если вопрос без выбора
+    # Автоматический выбор
     if 'auto_value' in question:
         user_data[user_id][question['key']] = question['auto_value']
         user_data[user_id]['step'] += 1
@@ -185,7 +183,7 @@ def process_answer(message, current_step):
                 bot.send_message(user_id, 'Выберите вариант из списка')
                 ask_next_question(user_id)
                 return
-            # Преобразование площади в число
+            # Преобразование площади
             if question['key'] == 'area':
                 user_data[user_id][question['key']] = int(answer.split()[0])
             else:
@@ -234,17 +232,6 @@ def calculate_cost(data):
     total += utility_cost
     return round(total, 2)
 
-def calculate_and_send_result(user_id):
-    data = user_data[user_id]
-    try:
-        total = calculate_cost(data)
-        result = f"💰 Общая стоимость: {total} руб."
-        bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
-    except Exception as e:
-        bot.send_message(user_id, "Ошибка: проверьте данные")
-    finally:
-        del user_data[user_id]
-
 def calculate_utility_cost(data):
     utilities = data.get('utilities', [])
     total = 0
@@ -259,6 +246,22 @@ def calculate_utility_cost(data):
             total += 40000
     return total
 
+def calculate_and_send_result(user_id):
+    data = user_data[user_id]
+    try:
+        total = calculate_cost(data)
+        result = f"💰 Общая стоимость: {total} руб.\n\n" \
+                 f"Расчет включает:\n" \
+                 f"• Основные работы: {data['area'] * COSTS['work']['base']} руб.\n" \
+                 f"• Фундамент: {COSTS['materials']['foundation']} руб.\n" \
+                 f"• Кровля: {data.get('roof', 'Не выбрано')} - {COSTS['materials']['roof'].get(data.get('roof', ''), 0) * data['area'] * 0.8} руб.\n" \
+                 f"• Инженерные сети: {calculate_utility_cost(data)} руб."
+        bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
+    except Exception as e:
+        bot.send_message(user_id, "Ошибка: проверьте данные")
+    finally:
+        del user_data[user_id]
+
 # Flask setup
 app = Flask(__name__)
 
@@ -272,18 +275,15 @@ def start_bot():
     # Добавляем паузу для стабильности
     import time
     time.sleep(3)
-    try:
-        bot.infinity_polling(
-            skip_pending=True,
-            timeout=60  # Увеличиваем таймаут
-        )
-    except Exception as e:
-        logging.error(f"Error during bot polling: {e}")
+    bot.infinity_polling(
+        skip_pending=True,
+        timeout=60  # Увеличен таймаут
+    )
 
 if __name__ == '__main__':
     bot_thread = threading.Thread(target=start_bot)
     bot_thread.daemon = True
     bot_thread.start()
     
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
