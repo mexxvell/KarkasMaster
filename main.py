@@ -12,57 +12,55 @@ bot = telebot.TeleBot(API_TOKEN)
 
 user_data = {}
 
-# Словарь эмодзи для категорий
 EMOJI = {
     'foundation': '🏛️',
-    'roof': '葺',
+    'roof': '🏛️',
     'insulation': '❄️',
-    'exterior': '🖌️',
-    'interior': '箦️',
+    'exterior': '🎨',
+    'interior': '🛋️',
     'utilities': '⚡',
     'windows': '🪟',
     'doors': '🚪',
     'terrace': '🌳'
 }
 
-# Параметры для расчета
 COSTS = {
     'materials': {
-        'foundation': 15000,  # Фиксированный фундамент
+        'foundation': 15000,
         'roof': {
-            'металлочерепица': 1200,
-            'мягкая кровля': 800,
-            'фальцевая кровля': 1800,
-            'Пропустить': 0  # Добавлено для пропуска
+            'Металлочерепица': 1200,
+            'Мягкая кровля': 800,
+            'Фальцевая кровля': 1800,
+            'Пропустить': 0
         },
         'insulation': {
-            'минеральная вата': 500,
-            'эковата': 400,
-            'пенополистирол': 600,
+            'Минеральная вата': 500,
+            'Эковата': 400,
+            'Пенополистирол': 600,
             'Пропустить': 0
         },
         'exterior': {
-            'сайдинг': 300,
-            'вагонка': 400,
-            'штукатурка': 250,
+            'Сайдинг': 300,
+            'Вагонка': 400,
+            'Штукатурка': 250,
             'Пропустить': 0
         },
         'interior': {
-            'вагонка': 350,
-            'гипсокартон': 300,
-            'другое': 0,
+            'Вагонка': 350,
+            'Гипсокартон': 300,
+            'Другое': 0,
             'Пропустить': 0
         },
-        'windows': 5000,  # за стандартное окно
+        'windows': 5000,
         'doors': {
             'входная': 15000,
             'межкомнатная': 8000
         }
     },
     'work': {
-        'base': 8000,  # базовая стоимость работ за кв.м
-        'terrace': 3000,  # за кв.м террасы
-        'basement': 1500  # за кв.м подвала
+        'base': 8000,
+        'terrace': 3000,
+        'basement': 1500
     }
 }
 
@@ -73,17 +71,17 @@ QUESTIONS = [
         'key': 'area'
     },
     {
-        'text': 'этажность 🏠:',
+        'text': 'Этажность 🏠:',
         'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой', 'Пропустить'],
         'key': 'floors'
     },
     {
         'text': 'Фундамент 🏗️:',
         'key': 'foundation',
-        'auto_value': 'свайно-винтовой'  # Автоматически выбираем
+        'auto_value': 'свайно-винтовой'
     },
     {
-        'text': 'Кровля 🏛️:',
+        'text': 'Кровля:',
         'options': ['Металлочерепица', 'Мягкая кровля', 'Фальцевая кровля', 'Пропустить'],
         'key': 'roof'
     },
@@ -140,7 +138,6 @@ TOTAL_STEPS = len(QUESTIONS)
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.chat.id
-    # Полное обнуление данных при каждом /start
     if user_id in user_data:
         del user_data[user_id]
     user_data[user_id] = {'step': 0}
@@ -158,16 +155,17 @@ def ask_next_question(user_id):
     
     if 'options' in question:
         emoji_char = EMOJI.get(question['key'], '')
-        # Добавляем "Пропустить" в варианты
-        options = question['options'] + ['Пропустить']
+        options = [opt for opt in question['options'] if opt != 'Пропустить']
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        markup.add(*[f"{emoji_char} {opt}" for opt in options])
+        
+        for opt in options:
+            markup.add(f"{emoji_char} {opt}")
+        markup.add("Пропустить")
     else:
         markup = types.ReplyKeyboardRemove()
     
     bot.send_message(user_id, progress, reply_markup=markup)
     
-    # Автоматический выбор
     if 'auto_value' in question:
         user_data[user_id][question['key']] = question['auto_value']
         user_data[user_id]['step'] = current_step + 1
@@ -181,26 +179,27 @@ def process_answer(message, current_step):
     answer = message.text.strip()
     
     if 'options' in question:
-        options = question['options'] + ['Пропустить']
-        if answer not in options:
+        emoji_char = EMOJI.get(question['key'], '')
+        clean_answer = answer.replace(f"{emoji_char} ", "").strip()
+        options = question['options']
+        
+        if clean_answer not in options and clean_answer != 'Пропустить':
             bot.send_message(user_id, 'Выберите вариант из списка')
             ask_next_question(user_id)
             return
         
-        # Обработка "Пропустить"
-        if answer == 'Пропустить':
+        if clean_answer == 'Пропустить':
             user_data[user_id][question['key']] = None
         else:
-            # Преобразование площади
             if question['key'] == 'area':
                 try:
-                    user_data[user_id][question['key']] = int(answer.split()[0])
+                    user_data[user_id][question['key']] = int(clean_answer.split()[0])
                 except:
                     bot.send_message(user_id, 'Некорректный формат. Введите число.')
                     ask_next_question(user_id)
                     return
             else:
-                user_data[user_id][question['key']] = answer
+                user_data[user_id][question['key']] = clean_answer
     else:
         try:
             value = float(answer)
@@ -215,16 +214,13 @@ def process_answer(message, current_step):
 
 def calculate_cost(data):
     total = 0
-    # Основные работы
-    total += data.get('area', 100) * COSTS['work']['base']  # По умолчанию 100 м², если пропущен
-    
-    # Фундамент (автоматически свайно-винтовой)
+    total += data.get('area', 100) * COSTS['work']['base']
     total += COSTS['materials']['foundation']
     
     # Кровля
     roof_type = data.get('roof')
     if roof_type and roof_type != 'Пропустить':
-        roof_area = data.get('area', 100) * 0.8  # Примерная площадь
+        roof_area = data.get('area', 100) * 0.8
         total += roof_area * COSTS['materials']['roof'].get(roof_type, 0)
     
     # Утеплитель
@@ -285,11 +281,11 @@ def calculate_and_send_result(user_id):
                  f"• Инженерные сети: {calculate_utility_cost(data)} руб."
         bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
     except Exception as e:
-        bot.send_message(user_id, "Ошибка: проверьте данные")
+        bot.send_message(user_id, f"Ошибка: {str(e)}")
     finally:
-        del user_data[user_id]
+        if user_id in user_data:
+            del user_data[user_id]
 
-# Flask setup
 app = Flask(__name__)
 
 @app.route('/')
@@ -298,14 +294,7 @@ def home():
 
 def start_bot():
     bot.remove_webhook()
-    bot.delete_webhook()
-    # Добавляем паузу для стабильности
-    import time
-    time.sleep(3)
-    bot.infinity_polling(
-        skip_pending=True,
-        timeout=60  # Увеличен таймаут
-    )
+    bot.polling(none_stop=True)
 
 if __name__ == '__main__':
     bot_thread = threading.Thread(target=start_bot)
