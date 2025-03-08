@@ -32,22 +32,26 @@ COSTS = {
         'roof': {
             'металлочерепица': 1200,
             'мягкая кровля': 800,
-            'фальцевая кровля': 1800
+            'фальцевая кровля': 1800,
+            'Пропустить': 0  # Добавлено для пропуска
         },
         'insulation': {
             'минеральная вата': 500,
             'эковата': 400,
-            'пенополистирол': 600
+            'пенополистирол': 600,
+            'Пропустить': 0
         },
         'exterior': {
             'сайдинг': 300,
             'вагонка': 400,
-            'штукатурка': 250
+            'штукатурка': 250,
+            'Пропустить': 0
         },
         'interior': {
             'вагонка': 350,
             'гипсокартон': 300,
-            'другое': 0
+            'другое': 0,
+            'Пропустить': 0
         },
         'windows': 5000,  # за стандартное окно
         'doors': {
@@ -65,27 +69,27 @@ COSTS = {
 QUESTIONS = [
     {
         'text': '🏡 Площадь дома (кв.м):',
-        'options': ['100 м²', '120 м²', '150 м²'],
+        'options': ['100 м²', '120 м²', '150 м²', 'Пропустить'],
         'key': 'area'
     },
     {
         'text': 'этажность 🏠:',
-        'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой'],
+        'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой', 'Пропустить'],
         'key': 'floors'
     },
     {
         'text': 'Фундамент 🏗️:',
         'key': 'foundation',
-        'auto_value': 'свайно-винтовой'
+        'auto_value': 'свайно-винтовой'  # Автоматически выбираем
     },
     {
         'text': 'Кровля 🏛️:',
-        'options': ['Металлочерепица', 'Мягкая кровля', 'Фальцевая кровля'],
+        'options': ['Металлочерепица', 'Мягкая кровля', 'Фальцевая кровля', 'Пропустить'],
         'key': 'roof'
     },
     {
         'text': 'Утеплитель ❄️:',
-        'options': ['Минеральная вата', 'Эковата', 'Пенополистирол'],
+        'options': ['Минеральная вата', 'Эковата', 'Пенополистирол', 'Пропустить'],
         'key': 'insulation'
     },
     {
@@ -95,12 +99,12 @@ QUESTIONS = [
     },
     {
         'text': 'Внешняя отделка 🎨:',
-        'options': ['Сайдинг', 'Вагонка', 'Штукатурка'],
+        'options': ['Сайдинг', 'Вагонка', 'Штукатурка', 'Пропустить'],
         'key': 'exterior'
     },
     {
         'text': 'Внутренняя отделка 🛋️:',
-        'options': ['Вагонка', 'Гипсокартон', 'Другое'],
+        'options': ['Вагонка', 'Гипсокартон', 'Другое', 'Пропустить'],
         'key': 'interior'
     },
     {
@@ -125,7 +129,7 @@ QUESTIONS = [
     },
     {
         'text': 'Инженерные сети ⚡ (выберите все):',
-        'options': ['Электрика', 'Водоснабжение', 'Канализация', 'Отопление'],
+        'options': ['Электрика', 'Водоснабжение', 'Канализация', 'Отопление', 'Пропустить'],
         'multiple': True,
         'key': 'utilities'
     }
@@ -136,23 +140,28 @@ TOTAL_STEPS = len(QUESTIONS)
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.chat.id
+    # Полное обнуление данных при каждом /start
+    if user_id in user_data:
+        del user_data[user_id]
     user_data[user_id] = {'step': 0}
     ask_next_question(user_id)
 
 def ask_next_question(user_id):
-    current_step = user_data[user_id]['step']
+    current_step = user_data[user_id].get('step', 0)
     if current_step >= TOTAL_STEPS:
         calculate_and_send_result(user_id)
         return
     
     question = QUESTIONS[current_step]
     text = question['text']
-    progress = f"Шаг {current_step+1} из {TOTAL_STEPS}\n\n{text}"
+    progress = f"Шаг {current_step + 1} из {TOTAL_STEPS}\n\n{text}"
     
     if 'options' in question:
         emoji_char = EMOJI.get(question['key'], '')
+        # Добавляем "Пропустить" в варианты
+        options = question['options'] + ['Пропустить']
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        markup.add(*[f"{emoji_char} {opt}" for opt in question['options']])
+        markup.add(*[f"{emoji_char} {opt}" for opt in options])
     else:
         markup = types.ReplyKeyboardRemove()
     
@@ -161,7 +170,7 @@ def ask_next_question(user_id):
     # Автоматический выбор
     if 'auto_value' in question:
         user_data[user_id][question['key']] = question['auto_value']
-        user_data[user_id]['step'] += 1
+        user_data[user_id]['step'] = current_step + 1
         ask_next_question(user_id)
     else:
         bot.register_next_step_handler_by_chat_id(user_id, process_answer, current_step=current_step)
@@ -172,20 +181,24 @@ def process_answer(message, current_step):
     answer = message.text.strip()
     
     if 'options' in question:
-        if 'multiple' in question and question['multiple']:
-            selected = []
-            for option in question['options']:
-                if option in answer:
-                    selected.append(option)
-            user_data[user_id][question['key']] = selected
+        options = question['options'] + ['Пропустить']
+        if answer not in options:
+            bot.send_message(user_id, 'Выберите вариант из списка')
+            ask_next_question(user_id)
+            return
+        
+        # Обработка "Пропустить"
+        if answer == 'Пропустить':
+            user_data[user_id][question['key']] = None
         else:
-            if answer not in question['options']:
-                bot.send_message(user_id, 'Выберите вариант из списка')
-                ask_next_question(user_id)
-                return
             # Преобразование площади
             if question['key'] == 'area':
-                user_data[user_id][question['key']] = int(answer.split()[0])
+                try:
+                    user_data[user_id][question['key']] = int(answer.split()[0])
+                except:
+                    bot.send_message(user_id, 'Некорректный формат. Введите число.')
+                    ask_next_question(user_id)
+                    return
             else:
                 user_data[user_id][question['key']] = answer
     else:
@@ -203,33 +216,47 @@ def process_answer(message, current_step):
 def calculate_cost(data):
     total = 0
     # Основные работы
-    total += data['area'] * COSTS['work']['base']
+    total += data.get('area', 100) * COSTS['work']['base']  # По умолчанию 100 м², если пропущен
+    
     # Фундамент (автоматически свайно-винтовой)
     total += COSTS['materials']['foundation']
+    
     # Кровля
-    roof_type = data.get('roof', '')
-    roof_area = data['area'] * 0.8  # примерная площадь кровли
-    total += roof_area * COSTS['materials']['roof'].get(roof_type, 0)
+    roof_type = data.get('roof')
+    if roof_type and roof_type != 'Пропустить':
+        roof_area = data.get('area', 100) * 0.8  # Примерная площадь
+        total += roof_area * COSTS['materials']['roof'].get(roof_type, 0)
+    
     # Утеплитель
-    insulation_type = data.get('insulation', '')
-    insulation_cost = (data['insulation_thickness'] / 100) * data['area'] * \
-        COSTS['materials']['insulation'].get(insulation_type, 0)
-    total += insulation_cost
+    insulation_type = data.get('insulation')
+    if insulation_type and insulation_type != 'Пропустить':
+        insulation_cost = (data.get('insulation_thickness', 150) / 100) * data.get('area', 100) * \
+            COSTS['materials']['insulation'].get(insulation_type, 0)
+        total += insulation_cost
+    
     # Внешняя отделка
-    total += data['area'] * COSTS['materials']['exterior'].get(data['exterior'], 0)
+    exterior_type = data.get('exterior')
+    if exterior_type and exterior_type != 'Пропустить':
+        total += data.get('area', 100) * COSTS['materials']['exterior'].get(exterior_type, 0)
+    
     # Внутренняя отделка
-    total += data['area'] * COSTS['materials']['interior'].get(data['interior'], 0)
+    interior_type = data.get('interior')
+    if interior_type and interior_type != 'Пропустить':
+        total += data.get('area', 100) * COSTS['materials']['interior'].get(interior_type, 0)
+    
     # Окна и двери
     windows = data.get('windows_count', 0) * COSTS['materials']['windows']
-    doors = (data.get('entrance_doors', 0) * COSTS['materials']['doors']['входная']) + \
-            (data.get('inner_doors', 0) * COSTS['materials']['doors']['межкомнатная'])
+    doors = (data.get('entrance_doors', 0) * 15000) + (data.get('inner_doors', 0) * 8000)
     total += windows + doors
+    
     # Терраса
     terrace_area = data.get('terrace_area', 0)
     total += terrace_area * COSTS['work']['terrace']
+    
     # Инженерные сети
     utility_cost = calculate_utility_cost(data)
     total += utility_cost
+    
     return round(total, 2)
 
 def calculate_utility_cost(data):
@@ -252,9 +279,9 @@ def calculate_and_send_result(user_id):
         total = calculate_cost(data)
         result = f"💰 Общая стоимость: {total} руб.\n\n" \
                  f"Расчет включает:\n" \
-                 f"• Основные работы: {data['area'] * COSTS['work']['base']} руб.\n" \
+                 f"• Основные работы: {data.get('area', 100) * COSTS['work']['base']} руб.\n" \
                  f"• Фундамент: {COSTS['materials']['foundation']} руб.\n" \
-                 f"• Кровля: {data.get('roof', 'Не выбрано')} - {COSTS['materials']['roof'].get(data.get('roof', ''), 0) * data['area'] * 0.8} руб.\n" \
+                 f"• Кровля: {data.get('roof', 'Не выбрано')} - {COSTS['materials']['roof'].get(data.get('roof'), 0) * data.get('area', 100) * 0.8} руб.\n" \
                  f"• Инженерные сети: {calculate_utility_cost(data)} руб."
         bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
     except Exception as e:
