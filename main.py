@@ -255,10 +255,13 @@ def start_bot():
     # Добавляем паузу для стабильности
     import time
     time.sleep(3)
-    bot.infinity_polling(
-        skip_pending=True,
-        timeout=60  # Увеличиваем таймаут
-    )
+    try:
+        bot.infinity_polling(
+            skip_pending=True,
+            timeout=60  # Увеличиваем таймаут
+        )
+    except Exception as e:
+        logging.error(f"Error during bot polling: {e}")
 
 if __name__ == '__main__':
     bot_thread = threading.Thread(target=start_bot)
