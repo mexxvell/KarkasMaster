@@ -259,14 +259,6 @@ def calculate_utility_cost(data):
             total += 40000
     return total
 
-def calculate_additions(data):
-    additions = 0
-    additions += data.get('windows_count', 0) * 5000  # окна
-    additions += data.get('entrance_doors', 0) * 15000  # входные двери
-    additions += data.get('inner_doors', 0) * 8000  # межкомнатные двери
-    additions += data.get('terrace_area', 0) * 3000  # терраса
-    return additions
-
 # Flask setup
 app = Flask(__name__)
 
