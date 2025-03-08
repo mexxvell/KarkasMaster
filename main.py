@@ -5,7 +5,6 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-# Получаем токен бота из переменной окружения
 API_TOKEN = os.getenv('API_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -15,7 +14,7 @@ QUESTIONS = [
     "Укажите площадь дома в квадратных метрах:",
     "Сколько этажей будет в доме?",
     "Выберите тип фундамента:\n1) Ленточный\n2) Свайный",
-    "Выберите тип отделки:\n1) Эконом\n2) Стандарт\n3) Премиум",
+    "Выберите тип отделку:\n1) Эконом\n2) Стандарт\n3) Премиум",
     "Нужны ли дополнительные услуги? (септик, гараж):\n1) Нет\n2) Да (септик)\n3) Да (гараж)\n4) Да (оба)"
 ]
 
@@ -103,7 +102,6 @@ def calculate_and_send_result(user_id):
         del user_data[user_id]  # Сброс состояния
 
 if __name__ == '__main__':
-    # Получаем порт из переменной окружения Render
     port = int(os.environ.get('PORT', 5000))
     bot.remove_webhook()
     bot.polling(port=port, skip_pending=True)
