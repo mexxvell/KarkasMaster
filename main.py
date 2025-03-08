@@ -12,147 +12,222 @@ bot = telebot.TeleBot(API_TOKEN)
 
 user_data = {}
 
+# Параметры для расчета
+COSTS = {
+    'materials': {
+        'foundation': {
+            'свайно-винтовой': 15000,
+            'ленточный': 20000,
+            'плита': 25000
+        },
+        'roof': {
+            'металлочерепица': 1200,
+            'мягкая кровля': 800,
+            'фальцевая кровля': 1800
+        },
+        'insulation': {
+            'минеральная вата': 500,
+            'эковата': 400,
+            'пенополистирол': 600
+        },
+        'exterior': {
+            'сайдинг': 300,
+            'вагонка': 400,
+            'штукатурка': 250
+        },
+        'interior': {
+            'вагонка': 350,
+            'гипсокартон': 300,
+            'другое': 0
+        },
+        'windows': 5000,  # за стандартное окно
+        'doors': {
+            'входная': 15000,
+            'межкомнатная': 8000
+        }
+    },
+    'work': {
+        'base': 8000,  # базовая стоимость работ за кв.м
+        'terrace': 3000,  # за кв.м террасы
+        'basement': 1500  # за кв.м подвала
+    }
+}
+
 QUESTIONS = [
     {
-        'text': "Выберите тип строения:",
-        'options': ['Дом', 'Баня', 'Навес', 'Сарай']
+        'text': 'Укажите площадь дома (кв.м):',
+        'type': 'number',
+        'key': 'area'
     },
     {
-        'text': "Укажите площадь в кв.м:",
-        'options': ['50', '100', '150', '200', 'Другое']
+        'text': 'Выберите этажность:',
+        'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой'],
+        'key': 'floors'
     },
     {
-        'text': "Сколько этажей?",
-        'options': ['1', '2', '3']
+        'text': 'Тип фундамента:',
+        'options': ['Свайно-винтовой', 'Ленточный', 'Плита'],
+        'key': 'foundation'
     },
     {
-        'text': "Выберите тип фундамента:",
-        'options': ['Ленточный', 'Свайный']
+        'text': 'Тип кровли:',
+        'options': ['Металлочерепица', 'Мягкая кровля', 'Фальцевая кровля'],
+        'key': 'roof'
     },
     {
-        'text': "Выберите тип отделки:",
-        'options': ['Эконом', 'Стандарт', 'Премиум']
+        'text': 'Тип утеплителя:',
+        'options': ['Минеральная вата', 'Эковата', 'Пенополистирол'],
+        'key': 'insulation'
     },
     {
-        'text': "Нужны ли дополнительные услуги?",
-        'options': ['Нет', 'Септик', 'Гараж', 'Оба']
+        'text': 'Толщина утеплителя (мм):',
+        'type': 'number',
+        'key': 'insulation_thickness'
+    },
+    {
+        'text': 'Внешняя отделка:',
+        'options': ['Сайдинг', 'Вагонка', 'Штукатурка'],
+        'key': 'exterior'
+    },
+    {
+        'text': 'Внутренняя отделка:',
+        'options': ['Вагонка', 'Гипсокартон', 'Другое'],
+        'key': 'interior'
+    },
+    {
+        'text': 'Количество стандартных окон:',
+        'type': 'number',
+        'key': 'windows_count'
+    },
+    {
+        'text': 'Количество входных дверей:',
+        'type': 'number',
+        'key': 'entrance_doors'
+    },
+    {
+        'text': 'Количество межкомнатных дверей:',
+        'type': 'number',
+        'key': 'inner_doors'
+    },
+    {
+        'text': 'Наличие террасы/балкона (кв.м):',
+        'type': 'number',
+        'key': 'terrace_area'
+    },
+    {
+        'text': 'Инженерные сети (выберите все что нужно):',
+        'options': ['Электрика', 'Водоснабжение', 'Канализация', 'Отопление'],
+        'multiple': True,
+        'key': 'utilities'
     }
 ]
 
-STEP = {
-    'building_type': 0,
-    'area': 1,
-    'floors': 2,
-    'foundation': 3,
-    'finish': 4,
-    'extras': 5
-}
+STEP = {item['key']: i for i, item in enumerate(QUESTIONS)}
 
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.chat.id
-    user_data[user_id] = {'step': 0}
-    ask_next_question(user_id)
+    user_data[user_id] = {}
+    ask_next_question(user_id, 0)
 
-def ask_next_question(user_id):
-    current_step = user_data[user_id]['step']
-    if current_step < len(QUESTIONS):
-        question = QUESTIONS[current_step]
-        text = question['text']
-        options = question['options']
-        
+def ask_next_question(user_id, step):
+    if step >= len(QUESTIONS):
+        calculate_and_send_result(user_id)
+        return
+    
+    question = QUESTIONS[step]
+    text = question['text']
+    
+    if 'options' in question:
         # Создаем клавиатуру
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        markup.add(*options)
-        
+        markup.add(*question['options'])
         bot.send_message(user_id, text, reply_markup=markup)
     else:
-        calculate_and_send_result(user_id)
-
-@bot.message_handler(func=lambda message: True)
-def answer(message):
-    user_id = message.chat.id
-    current_step = user_data[user_id]['step']
+        # Числовой ввод
+        bot.send_message(user_id, text)
     
-    if current_step < len(QUESTIONS):
-        question = QUESTIONS[current_step]
-        options = question['options']
-        user_answer = message.text
-        
-        # Проверяем, что ответ в списке вариантов
-        if user_answer not in options:
-            bot.send_message(user_id, "Пожалуйста, выберите вариант из списка.")
+    bot.register_next_step_handler_by_chat_id(user_id, process_answer, step=step)
+
+def process_answer(message, step):
+    user_id = message.chat.id
+    question = QUESTIONS[step]
+    answer = message.text.strip()
+    
+    if 'options' in question:
+        if answer not in question['options']:
+            bot.send_message(user_id, 'Выберите вариант из списка')
+            ask_next_question(user_id, step)
             return
         
-        # Сохраняем ответ
-        key = list(STEP.keys())[current_step]
-        user_data[user_id][key] = user_answer
-        
-        # Переходим к следующему шагу
-        user_data[user_id]['step'] += 1
-        ask_next_question(user_id)
+        user_data[user_id][question['key']] = answer
     else:
-        bot.send_message(user_id, "Спасибо, ваш запрос обрабатывается...")
+        try:
+            value = float(answer)
+            user_data[user_id][question['key']] = value
+        except:
+            bot.send_message(user_id, 'Введите число')
+            ask_next_question(user_id, step)
+            return
+    
+    next_step = step + 1
+    ask_next_question(user_id, next_step)
+
+def calculate_cost(data):
+    total = 0
+    
+    # Расчет материалов
+    materials = [
+        data.get('foundation'),
+        data.get('roof'),
+        data.get('insulation'),
+        data.get('exterior'),
+        data.get('interior')
+    ]
+    
+    total += data['area'] * COSTS['work']['base']
+    
+    # Дополнительные материалы
+    total += COSTS['materials']['foundation'].get(data['foundation'], 0)
+    total += data['roof_area'] * COSTS['materials']['roof'].get(data['roof'], 0)
+    total += (data['insulation_thickness'] / 100) * data['area'] * COSTS['materials']['insulation'].get(data['insulation'], 0)
+    total += data['area'] * COSTS['materials']['exterior'].get(data['exterior'], 0)
+    total += data['area'] * COSTS['materials']['interior'].get(data['interior'], 0)
+    
+    # Окна и двери
+    total += data['windows_count'] * COSTS['materials']['windows']
+    total += data['entrance_doors'] * COSTS['materials']['doors']['входная']
+    total += data['inner_doors'] * COSTS['materials']['doors']['межкомнатная']
+    
+    # Терраса
+    total += data.get('terrace_area', 0) * COSTS['work']['terrace']
+    
+    # Инженерные сети
+    utility_cost = 0
+    if 'Электрика' in data['utilities']:
+        utility_cost += 50000
+    if 'Водоснабжение' in data['utilities']:
+        utility_cost += 30000
+    if 'Канализация' in data['utilities']:
+        utility_cost += 25000
+    if 'Отопление' in data['utilities']:
+        utility_cost += 40000
+    total += utility_cost
+    
+    return total
 
 def calculate_and_send_result(user_id):
     data = user_data[user_id]
     try:
-        area = float(data['area']) if data['area'] != 'Другое' else float(input("Укажите площадь: "))
-        floors = int(data['floors'])
-        foundation = data['foundation']
-        finish = data['finish']
-        extras = data['extras']
-        building_type = data['building_type']
-
-        # Базовая стоимость зависит от типа строения
-        base_cost = {
-            'Дом': 1000000,
-            'Баня': 800000,
-            'Навес': 200000,
-            'Сарай': 300000
-        }[building_type]
-
-        cost = base_cost
-
-        # Расчет площади
-        cost += area * 15000  # 15000 руб за 1 м²
-
-        # Этажи
-        cost += floors * 200000
-
-        # Фундамент
-        if foundation == 'Ленточный':
-            cost *= 1.10  # +10%
-        elif foundation == 'Свайный':
-            cost *= 1.20  # +20%
-
-        # Отделка
-        if finish == 'Эконом':
-            cost *= 1.05  # +5%
-        elif finish == 'Стандарт':
-            cost *= 1.10  # +10%
-        elif finish == 'Премиум':
-            cost *= 1.15  # +15%
-
-        # Дополнительные услуги
-        extra_cost = 0
-        if extras == 'Септик':
-            extra_cost = 10000
-        elif extras == 'Гараж':
-            extra_cost = 20000
-        elif extras == 'Оба':
-            extra_cost = 30000
-        cost += extra_cost
-
-        result = f"Общая стоимость: {cost:.2f} руб."
+        total = calculate_cost(data)
+        result = f"Общая стоимость: {total:.2f} руб."
         bot.send_message(user_id, result, reply_markup=types.ReplyKeyboardRemove())
     except Exception as e:
         bot.send_message(user_id, "Ошибка: проверьте корректность данных.")
-        logging.error(f"Ошибка: {str(e)}")
     finally:
-        del user_data[user_id]  # Сброс состояния
+        del user_data[user_id]
 
-# Используем Flask для порта
+# Flask setup
 app = Flask(__name__)
 
 @app.route('/')
@@ -160,19 +235,14 @@ def home():
     return "Бот работает!"
 
 def start_bot():
-    # Удаляем предыдущий вебхук и обновления
     bot.remove_webhook()
     bot.delete_webhook()
-    
-    # Запускаем polling с очисткой
     bot.infinity_polling(skip_pending=True)
 
 if __name__ == '__main__':
-    # Запускаем бота в фоновом потоке
     bot_thread = threading.Thread(target=start_bot)
     bot_thread.daemon = True
     bot_thread.start()
     
-    # Запускаем Flask
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
