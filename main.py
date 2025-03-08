@@ -9,6 +9,8 @@ from telebot import types
 logging.basicConfig(level=logging.INFO)
 
 API_TOKEN = os.getenv('API_TOKEN')
+if not API_TOKEN:
+    raise ValueError("API_TOKEN environment variable is missing")
 bot = telebot.TeleBot(API_TOKEN)
 
 user_data = {}
@@ -318,12 +320,14 @@ def calculate_cost(data):
     area = data.get('area', 100) or 100  # Исправление ошибки NoneType
     base_cost = area * base_price * multiplier
     total += base_cost
+    details.append(f"Основные работы: {base_cost:,.0f} руб.")
     
     # Фундамент
     foundation_type = data.get('foundation')
     if foundation_type and foundation_type != 'Пропустить':
         foundation_cost = COSTS['materials']['foundation'].get(foundation_type, 0)
         total += foundation_cost
+        details.append(f"Фундамент: {foundation_cost:,.0f} руб.")
     
     # Кровля
     roof_type = data.get('roof')
@@ -331,14 +335,27 @@ def calculate_cost(data):
         roof_area = calculate_roof_area(data)
         roof_cost = roof_area * COSTS['materials']['roof'].get(roof_type, 0)
         total += roof_cost
+        details.append(f"Кровля: {roof_cost:,.0f} руб.")
     
     # Остальные расчеты аналогично с проверкой на None...
     
     # Региональный коэффициент
     region = data.get('region', 'Другой')
     total *= REGIONAL_COEFFICIENTS.get(region, 1.0)
+    details.append(f"Региональный коэффициент: {REGIONAL_COEFFICIENTС.get(region, 1.0)}")
     
     return round(total, 2), details
+
+def calculate_roof_area(data):
+    area = data.get('area', 100) or 100  # Default to 100 if area is not provided
+    floor_type = data.get('floors', 'Одноэтажный')
+    if floor_type == 'Одноэтажный':
+        return area
+    elif floor_type == 'Двухэтажный':
+        return area * 1.5  # Assuming the roof area is 1.5 times the base area for two-story houses
+    elif floor_type == 'С мансардой':
+        return area * 1.2  # Assuming the roof area is 1.2 times the base area for houses with an attic
+    return area
 
 def calculate_and_send_result(user_id):
     try:
@@ -350,7 +367,7 @@ def calculate_and_send_result(user_id):
         project['total_cost'] = total
         track_event('complete')
         
-        bot.send_message(user_id, f"✅ Расчет завершен!\n💰 Итоговая стоимость: {total:,.0f} руб.")
+        bot.send_message(user_id, f"✅ Расчет завершен!\n💰 Итоговая стоимость: {total:,.0f} руб.\n\nДетали:\n" + "\n".join(details))
         schedule_reminder(user_id, project['name'])
         
     except Exception as e:
@@ -401,7 +418,7 @@ def home():
 
 @app.route('/analytics')
 def show_analytics():
-    completion_rate = analytics_data['completed_calculations'] / analytics_data['started_calculations'] * 100 if analytics_data['started_calculations'] > 0 else 0
+    completion_rate = (analytics_data['completed_calculations'] / analytics_data['started_calculations'] * 100) if analytics_data['started_calculations'] > 0 else 0
     return f"""
     📊 Аналитика:
     Начато расчетов: {analytics_data['started_calculations']}
