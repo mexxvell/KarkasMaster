@@ -1,7 +1,9 @@
 import os
+from flask import Flask
 import telebot
 from telebot import types
 import logging
+import threading
 
 logging.basicConfig(level=logging.INFO)
 
@@ -14,7 +16,7 @@ QUESTIONS = [
     "Укажите площадь дома в квадратных метрах:",
     "Сколько этажей будет в доме?",
     "Выберите тип фундамента:\n1) Ленточный\n2) Свайный",
-    "Выберите тип отделку:\n1) Эконом\n2) Стандарт\n3) Премиум",
+    "Выберите тип отделки:\n1) Эконом\n2) Стандарт\n3) Премиум",
     "Нужны ли дополнительные услуги? (септик, гараж):\n1) Нет\n2) Да (септик)\n3) Да (гараж)\n4) Да (оба)"
 ]
 
@@ -101,7 +103,23 @@ def calculate_and_send_result(user_id):
     finally:
         del user_data[user_id]  # Сброс состояния
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+# Используем Flask для запуска на порту
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Бот работает!"
+
+def start_bot():
     bot.remove_webhook()
-    bot.polling(port=port, skip_pending=True)
+    bot.infinity_polling(skip_pending=True)
+
+if __name__ == '__main__':
+    # Запускаем бота в фоновом потоке
+    bot_thread = threading.Thread(target=start_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+
+    # Запускаем Flask для порта
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
