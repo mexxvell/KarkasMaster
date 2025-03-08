@@ -12,20 +12,20 @@ bot = telebot.TeleBot(API_TOKEN)
 
 user_data = {}
 
-# Добавлены эмодзи для категорий
+# Словарь эмодзи для категорий
 EMOJI = {
     'foundation': '🏛️',
     'roof': '葺',
     'insulation': '❄️',
-    'exterior': 'Facade 🖌️',
-    'interior': 'Interior 🛋️',
-    'utilities': 'Utilities ⚡',
-    'windows': 'Window 🪟',
-    'doors': 'Door 🚪',
-    'terrace': 'Terrace 🌳'
+    'exterior': '🖌️',
+    'interior': '箦️',
+    'utilities': '⚡',
+    'windows': '🪟',
+    'doors': '🚪',
+    'terrace': '🌳'
 }
 
-# Параметры для расчета с эмодзи
+# Параметры для расчета
 COSTS = {
     'materials': {
         'foundation': {
@@ -152,9 +152,12 @@ def ask_next_question(user_id, step):
     text = question['text']
     
     if 'options' in question:
+        # Получаем эмодзи из словаря по ключу вопроса
+        emoji_char = EMOJI.get(question['key'], '')
+        
         # Создаем клавиатуру с эмодзи
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        markup.add(*[f"{emoji} {opt}" for opt in question['options']])
+        markup.add(*[f"{emoji_char} {opt}" for opt in question['options']])
         
         bot.send_message(user_id, text, reply_markup=markup)
     else:
