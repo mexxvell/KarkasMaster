@@ -363,7 +363,7 @@ def show_main_menu(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
-    bot.send_message(user_id, f"{STYLES['header]} Главное меню:", reply_markup=create_main_menu())
+    bot.send_message(user_id, f"{STYLES['header']} Главное меню:", reply_markup=create_main_menu())
     save_user_data()
 
 @bot.message_handler(func=lambda m: m.text == "🏠 Новый проект")
@@ -394,7 +394,7 @@ def ask_next_question(user_id):
     
     question = QUESTIONS[current_step]
     progress_text = (
-        f"{STYLES['header]} Шаг {current_step + 1}/{TOTAL_STEPS}\n"
+        f"{STYLES['header']} Шаг {current_step + 1}/{TOTAL_STEPS}\n"
         f"{question['text']}"
     )
     
@@ -463,7 +463,7 @@ def process_answer(message, current_step):
         logger.error(f"Ошибка пользователя {user_id}: {str(e)}")
         bot.send_message(
             user_id,
-            f"{STYLES['error]} Ошибка:\n{str(e)}\n\nПовторите ввод:",
+            f"{STYLES['error']} Ошибка:\n{str(e)}\n\nПовторите ввод:",
             reply_markup=create_keyboard(
                 question['options'],
                 question.get('row_width', 2),
@@ -632,7 +632,7 @@ def calculate_and_send_result(user_id):
 
 def send_result_message(user_id, total, details):
     result = [
-        f"{STYLES['header]} Детализированный расчет стоимости:",
+        f"{STYLES['header']} Детализированный расчет стоимости:",
         *details,
         STYLES['separator'],
         f"💰 Примерная стоимость: {total:,.0f} руб."
@@ -666,12 +666,12 @@ def send_to_specialist(message):
     
     project = user['projects'].get(project_id)
     if not project or not project.get('report'):
-        bot.send_message(user_id, f"{STYLES['error]} Отчет не найден")
+        bot.send_message(user_id, f"{STYLES['error']} Отчет не найден")
         return
     
     report = project['report']
     result = [
-        f"{STYLES['header]} Новый запрос от @{message.from_user.username}",
+        f"{STYLES['header']} Новый запрос от @{message.from_user.username}",
         "📊 Детали расчета:",
         *report['details'],
         STYLES['separator'],
@@ -680,10 +680,10 @@ def send_to_specialist(message):
     
     try:
         bot.send_message(515650034, "\n".join(result))
-        bot.send_message(user_id, f"{STYLES['success]} Запрос отправлен специалисту!")
+        bot.send_message(user_id, f"{STYLES['success']} Запрос отправлен специалисту!")
     except Exception as e:
         logger.error(f"Ошибка отправки: {str(e)}")
-        bot.send_message(user_id, f"{STYLES['error]} Ошибка отправки: {str(e)}")
+        bot.send_message(user_id, f"{STYLES['error']} Ошибка отправки: {str(e)}")
     
     show_main_menu(message)
 
@@ -701,7 +701,7 @@ def show_guides_menu(message):
     
     bot.send_message(
         user_id,
-        f"{STYLES['header]} Выберите раздел гайда:",
+        f"{STYLES['header']} Выберите раздел гайда:",
         reply_markup=markup
     )
 
@@ -743,7 +743,7 @@ def handle_settings(message):
     
     bot.send_message(
         user_id,
-        f"{STYLES['header]} Настройки:",
+        f"{STYLES['header']} Настройки:",
         reply_markup=markup
     )
 
@@ -757,7 +757,7 @@ def clear_history(message):
     
     bot.send_message(
         user_id,
-        f"{STYLES['warning]} Вы уверены, что хотите удалить всю историю расчетов?",
+        f"{STYLES['warning']} Вы уверены, что хотите удалить всю историю расчетов?",
         reply_markup=markup
     )
     bot.register_next_step_handler(message, confirm_clear_history)
@@ -771,13 +771,13 @@ def confirm_clear_history(message):
         save_user_data()
         bot.send_message(
             user_id,
-            f"{STYLES['success]} История расчетов успешно очищена!",
+            f"{STYLES['success']} История расчетов успешно очищена!",
             reply_markup=create_main_menu()
         )
     else:
         bot.send_message(
             user_id,
-            f"{STYLES['success]} Действие отменено",
+            f"{STYLES['success']} Действие отменено",
             reply_markup=create_main_menu()
         )
 
@@ -791,14 +791,14 @@ def show_history(message):
     if not user['projects']:
         bot.send_message(
             user_id,
-            f"{STYLES['warning]} У вас пока нет сохраненных проектов"
+            f"{STYLES['warning']} У вас пока нет сохраненных проектов"
         )
         return
     
-    response = [f"{STYLES['header]} Ваши проекты:"]
+    response = [f"{STYLES['header']} Ваши проекты:"]
     for pid, project in user['projects'].items():
         if project.get('report'):
-            status = f"{STYLES['success]} {project['report']['timestamp']}"
+            status = f"{STYLES['success']} {project['report']['timestamp']}"
             response.append(
                 f"📌 {project['name']} - {status}\n"
                 f"Стоимость: {project['report']['total']:,.0f} руб.\n"
@@ -833,7 +833,7 @@ def save_project(message):
     
     bot.send_message(
         user_id,
-        f"{STYLES['success]} Проект успешно сохранен!",
+        f"{STYLES['success']} Проект успешно сохранен!",
         reply_markup=create_main_menu()
     )
 
