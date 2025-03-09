@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import requests
 from datetime import datetime, timedelta
 from flask import Flask
 import telebot
@@ -507,7 +508,12 @@ def start_bot():
     bot.polling(none_stop=True)
 
 if __name__ == '__main__':
+    threading.Thread(target=self_ping, daemon=True).start()
+    
+    # Запуск бота в отдельном потоке
     bot_thread = threading.Thread(target=start_bot)
     bot_thread.daemon = True
     bot_thread.start()
+    
+    # Запуск Flask приложения
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
