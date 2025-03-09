@@ -470,6 +470,7 @@ def process_answer(message, current_step):
                 'Пропустить' in question['options']
             )
         )
+        bot.register_next_step_handler_by_chat_id(user_id, process_answer, current_step=current_step)
         track_event('abandon', current_step)
         return
     
