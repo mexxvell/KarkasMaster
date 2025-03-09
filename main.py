@@ -505,9 +505,9 @@ def calculate_and_send_result(user_id):
 @bot.message_handler(func=lambda m: m.text == "📚 Строительный гайд")
 def show_guide_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    for key in GUIDES:
-        markup.add(types.KeyboardButton(GUIDES[key]['title']))
-    markup.add("🔙 Назад")
+    buttons = [g['title'] for g in GUIDES.values()]
+    markup.add(*buttons)
+    markup.add("🔙 Главное меню")
     bot.send_message(message.chat.id, "📚 Выберите раздел гайда:", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text in [g['title'] for g in GUIDES.values()])
@@ -515,15 +515,23 @@ def show_guide_content(message):
     guide_title = message.text
     for key, guide in GUIDES.items():
         if guide['title'] == guide_title:
-            content = f"📖 <b>{guide['title']}</b>\n\n{guide['content']}"
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add("🔙 К списку гайдов")
-            bot.send_message(message.chat.id, content, parse_mode='HTML', reply_markup=markup)
+            bot.send_message(
+                message.chat.id, 
+                f"📖 <b>{guide['title']}</b>\n\n{guide['content']}", 
+                parse_mode='HTML', 
+                reply_markup=markup
+            )
             break
 
 @bot.message_handler(func=lambda m: m.text == "🔙 К списку гайдов")
 def back_to_guides(message):
     show_guide_menu(message)
+
+@bot.message_handler(func=lambda m: m.text == "🔙 Главное меню")
+def back_to_main(message):
+    show_main_menu(message)
 
 @bot.message_handler(func=lambda m: m.text == "⚙ Настройки")
 def handle_settings(message):
