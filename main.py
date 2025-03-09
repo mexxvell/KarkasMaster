@@ -92,74 +92,81 @@ QUESTIONS = [
     {
         'text': '📍 Регион строительства:',
         'options': ['Москва', 'СПб', 'Другой'],
-        'key': 'region'
+        'key': 'region',
+        'row_width': 2
     },
     {
         'text': '🏡 Площадь дома (кв.м):',
         'options': ['100', '120', '150', 'Пропустить'],
         'key': 'area',
-        'max': 1000
+        'max': 1000,
+        'row_width': 2
     },
     {
         'text': 'Этажность 🏠:',
         'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой', 'Пропустить'],
-        'key': 'floors'
+        'key': 'floors',
+        'row_width': 2
     },
     {
         'text': 'Фундамент 🏗️:',
         'options': ['Свайно-винтовой', 'Ленточный', 'Плитный', 'Пропустить'],
-        'key': 'foundation'
+        'key': 'foundation',
+        'row_width': 2
     },
     {
         'text': 'Кровля:',
         'options': ['Металлочерепица', 'Мягкая кровля', 'Фальцевая кровля', 'Пропустить'],
-        'key': 'roof'
+        'key': 'roof',
+        'row_width': 2
     },
     {
         'text': 'Утеплитель ❄️:',
         'options': ['Минеральная вата', 'Эковата', 'Пенополистирол', 'Пропустить'],
-        'key': 'insulation'
+        'key': 'insulation',
+        'row_width': 2
     },
     {
         'text': 'Толщина утеплителя (мм) 📏:',
-        'type': 'number',
+        'options': ['100', '150', '200'],
         'key': 'insulation_thickness',
-        'min': 50,
-        'max': 500
+        'row_width': 3
     },
     {
         'text': 'Внешняя отделка 🎨:',
         'options': ['Сайдинг', 'Вагонка', 'Штукатурка', 'Пропустить'],
-        'key': 'exterior'
+        'key': 'exterior',
+        'row_width': 2
     },
     {
         'text': 'Внутренняя отделка 🛋️:',
         'options': ['Вагонка', 'Гипсокартон', 'Другое', 'Пропустить'],
-        'key': 'interior'
+        'key': 'interior',
+        'row_width': 2
     },
     {
         'text': 'Количество окон 🪟:',
-        'type': 'number',
+        'options': ['1', '2', '3', '4', '5', '6'],
         'key': 'windows_count',
-        'max': 50
+        'row_width': 3
     },
     {
         'text': 'Входные двери 🚪:',
-        'type': 'number',
+        'options': ['1', '2', '3', '4', '5', '6'],
         'key': 'entrance_doors',
-        'max': 10
+        'row_width': 3
     },
     {
         'text': 'Межкомнатные двери 🚪:',
-        'type': 'number',
+        'options': ['1', '2', '3', '4', '5', '6'],
         'key': 'inner_doors',
-        'max': 30
+        'row_width': 3
     },
     {
         'text': 'Терраса/балкон (кв.м) 🌳:',
-        'type': 'number',
+        'options': ['0', '10', '20', '30', 'Пропустить'],
         'key': 'terrace_area',
-        'max': 200
+        'row_width': 2
     }
 ]
 
@@ -176,11 +183,47 @@ def get_user_data(user_id):
         }
     return user_data[user_id]
 
-GUIDES = [
-    {"title": "Выбор фундамента", "content": "Фундамент - основа дома..."},
-    {"title": "Типы кровли", "content": "Кровля защищает ваш дом..."},
-    {"title": "Утепление дома", "content": "Правильное утепление..."}
-]
+GUIDES = {
+    'foundation': {
+        'title': '🏗️ Фундамент',
+        'content': '''Преимущества:
+- Свайный: быстро, дешево
+- Ленточный: надежно для тяжелых домов
+- Плитный: равномерное распределение нагрузки
+
+Советы:
+✅ Экономить: выбор типа по грунту
+❌ Не экономить: гидроизоляцию'''
+    },
+    'frame': {
+        'title': '🛠️ Каркас',
+        'content': '''Важные моменты:
+- Используйте сухую древесину
+- Шаг стоек 60 см
+- Обязательная обработка антисептиком
+
+Советы:
+✅ Экономить: на отделочных материалах
+❌ Не экономить: на качестве древесины'''
+    },
+    'roof': {
+        'title': '🏛️ Кровля',
+        'content': '''Варианты:
+- Металлочерепица: долговечно, шумно
+- Мягкая кровля: тихо, дороже
+- Фальцевая: для сложных форм
+
+Советы:
+✅ Экономить: на декоративных элементах
+❌ Не экономить: на утеплении'''
+    }
+}
+
+def create_keyboard(items, row_width):
+    markup = types.ReplyKeyboardMarkup(row_width=row_width, resize_keyboard=True)
+    buttons = [types.KeyboardButton(item) for item in items]
+    markup.add(*buttons)
+    return markup
 
 def schedule_reminder(user_id, project_name):
     def send_reminder():
@@ -198,17 +241,11 @@ def track_event(event_type, step=None):
     elif event_type == 'abandon':
         analytics_data['abandoned_steps'][step] = analytics_data['abandoned_steps'].get(step, 0) + 1
 
-def create_adaptive_markup(user_id):
-    user = get_user_data(user_id)
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    
-    if user['current_project']:
-        markup.add("▶ Продолжить расчет", "📁 Новый проект")
-    else:
-        markup.add("🏠 Новый проект")
-        
-    markup.add("📚 Строительный гайд", "📊 История расчетов")
-    markup.add("⚙ Настройки", "🗑️ Очистить историю")
+def create_main_menu(user_id):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    buttons = ["🏠 Новый проект", "📚 Строительный гайд", 
+              "📊 История расчетов", "⚙ Настройки"]
+    markup.add(*buttons)
     return markup
 
 @bot.message_handler(commands=['start', 'menu'])
@@ -217,7 +254,7 @@ def show_main_menu(message):
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
     
-    bot.send_message(user_id, "🏠 Главное меню:", reply_markup=create_adaptive_markup(user_id))
+    bot.send_message(user_id, "🏠 Главное меню:", reply_markup=create_main_menu(user_id))
 
 @bot.message_handler(func=lambda m: m.text == "🏠 Новый проект")
 def start_new_project(message):
@@ -246,23 +283,18 @@ def ask_next_question(user_id):
     
     question = QUESTIONS[current_step]
     text = question['text']
+    row_width = question.get('row_width', 2)
     
     if current_step == 1:
-        text += "\n(Введите число или выберите вариант)"
+        text += "\n(Выберите или введите значение)"
     
     progress = f"Шаг {current_step + 1} из {TOTAL_STEPS}\n{text}"
     
     if 'options' in question:
-        emoji_char = EMOJI.get(question['key'], '')
-        options = [opt for opt in question['options'] if opt != 'Пропустить']
-        markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        
-        for opt in options:
-            if current_step == 1 and opt != 'Пропустить':
-                markup.add(f"{opt} м²")
-            else:
-                markup.add(f"{emoji_char} {opt}")
-        markup.add("Пропустить")
+        markup = create_keyboard(question['options'], row_width)
+        if 'Пропустить' in question['options']:
+            markup.add("Пропустить")
+        markup.add("❌ Отменить расчет")
     else:
         markup = types.ReplyKeyboardRemove()
     
@@ -278,32 +310,23 @@ def process_answer(message, current_step):
     try:
         answer = message.text.strip()
         
+        if answer == "❌ Отменить расчет":
+            del user['projects'][user['current_project']]
+            user['current_project'] = None
+            show_main_menu(message)
+            return
+
         if 'options' in question:
-            if current_step == 1:
-                clean_answer = answer.replace(' м²', '')
+            if answer not in question['options'] and answer != 'Пропустить':
+                raise ValueError("Выберите вариант из списка")
+            
+            if answer == 'Пропустить':
+                project['data'][question['key']] = None
             else:
-                emoji_char = EMOJI.get(question['key'], '')
-                clean_answer = answer.replace(f"{emoji_char} ", "")
+                project['data'][question['key']] = answer
                 
-            clean_answer = clean_answer.strip()
-            
-            if clean_answer not in question['options'] and clean_answer != 'Пропустить':
-                raise ValueError("Неверный вариант")
-            
-            if current_step == 1 and clean_answer != 'Пропустить':
-                project['data'][question['key']] = float(clean_answer)
-            else:
-                project['data'][question['key']] = clean_answer if clean_answer != 'Пропустить' else None
-            
         elif question.get('type') == 'number':
             value = float(answer)
-            
-            if 'min' in question and value < question['min']:
-                raise ValueError(f"Минимальное значение: {question['min']}")
-                
-            if 'max' in question and value > question['max']:
-                raise ValueError(f"Максимальное значение: {question['max']}")
-                
             project['data'][question['key']] = value
             
         project['data']['step'] = current_step + 1
@@ -334,66 +357,66 @@ def calculate_cost(data):
         floor_type = data.get('floors', 'Одноэтажный')
         base_price = COSTS['work']['base']['price']
         multiplier = COSTS['work']['base']['floor_multiplier'].get(floor_type, 1.0)
-        area = data.get('area', 100) or 100
+        area = float(data.get('area', 100)) if data.get('area') else 100
         base_cost = area * base_price * multiplier
         total += base_cost
-        details.append(f"Основные работы ({floor_type}): {base_cost:,.0f} руб.")
-        
+        details.append(f"Основные работы ({floor_type}): {base_cost:,.0f}₽")
+
+        insulation_thickness = float(data.get('insulation_thickness', 150))
+        insulation_type = data.get('insulation')
+        if insulation_type and insulation_type != 'Пропустить':
+            min_thickness = COSTS['materials']['insulation'][insulation_type]['min_thickness']
+            actual_thickness = max(insulation_thickness, min_thickness)
+            insulation_cost = (actual_thickness / 100) * area * COSTS['materials']['insulation'][insulation_type]['price']
+            total += insulation_cost
+            details.append(f"Утеплитель ({insulation_type} {actual_thickness}мм): {insulation_cost:,.0f}₽")
+
         foundation_type = data.get('foundation')
         if foundation_type and foundation_type != 'Пропустить':
             foundation_cost = COSTS['materials']['foundation'].get(foundation_type, 0)
             total += foundation_cost
-            details.append(f"Фундамент ({foundation_type}): {foundation_cost:,.0f} руб.")
-        
+            details.append(f"Фундамент ({foundation_type}): {foundation_cost:,.0f}₽")
+
         roof_type = data.get('roof')
         if roof_type and roof_type != 'Пропустить':
             roof_area = calculate_roof_area(data)
             roof_cost = roof_area * COSTS['materials']['roof'].get(roof_type, 0)
             total += roof_cost
-            details.append(f"Кровля ({roof_type}): {roof_cost:,.0f} руб.")
-        
-        insulation_type = data.get('insulation')
-        if insulation_type and insulation_type != 'Пропустить':
-            min_thickness = COSTS['materials']['insulation'][insulation_type]['min_thickness']
-            actual_thickness = max(data.get('insulation_thickness', 0) or 0, min_thickness)
-            insulation_cost = (actual_thickness / 100) * area * COSTS['materials']['insulation'][insulation_type]['price']
-            total += insulation_cost
-            details.append(f"Утеплитель ({insulation_type}): {insulation_cost:,.0f} руб.")
-        
+            details.append(f"Кровля ({roof_type}): {roof_cost:,.0f}₽")
+
         exterior_type = data.get('exterior')
         if exterior_type and exterior_type != 'Пропустить':
             exterior_cost = area * COSTS['materials']['exterior'].get(exterior_type, 0)
             total += exterior_cost
-            details.append(f"Внешняя отделка ({exterior_type}): {exterior_cost:,.0f} руб.")
-        
+            details.append(f"Внешняя отделка ({exterior_type}): {exterior_cost:,.0f}₽")
+
         interior_type = data.get('interior')
         if interior_type and interior_type != 'Пропустить':
             interior_cost = area * COSTS['materials']['interior'].get(interior_type, 0)
             total += interior_cost
-            details.append(f"Внутренняя отделка ({interior_type}): {interior_cost:,.0f} руб.")
-        
-        windows_count = data.get('windows_count', 0) or 0
-        entrance_doors = data.get('entrance_doors', 0) or 0
-        inner_doors = data.get('inner_doors', 0) or 0
+            details.append(f"Внутренняя отделка ({interior_type}): {interior_cost:,.0f}₽")
+
+        windows_count = int(data.get('windows_count', 0)) or 0
+        entrance_doors = int(data.get('entrance_doors', 0)) or 0
+        inner_doors = int(data.get('inner_doors', 0)) or 0
         
         windows_cost = windows_count * COSTS['materials']['windows']
         entrance_doors_cost = entrance_doors * COSTS['materials']['doors']['входная']
         inner_doors_cost = inner_doors * COSTS['materials']['doors']['межкомнатная']
         doors_windows_total = windows_cost + entrance_doors_cost + inner_doors_cost
         total += doors_windows_total
-        details.append(f"Окна/двери: {doors_windows_total:,.0f} руб.")
-        
-        terrace_area = data.get('terrace_area', 0) or 0
+        details.append(f"Окна/двери: {doors_windows_total:,.0f}₽")
+
+        terrace_area = float(data.get('terrace_area', 0)) or 0
         terrace_cost = terrace_area * COSTS['work']['terrace']
         total += terrace_cost
         if terrace_area > 0:
-            details.append(f"Терраса: {terrace_cost:,.0f} руб.")
-        
+            details.append(f"Терраса: {terrace_cost:,.0f}₽")
+
         region = data.get('region', 'Другой')
-        regional_coeff = REGIONAL_COEFFICIENTS.get(region, 1.0)
-        total *= regional_coeff
-        details.append(f"Региональный коэффициент ({region}): x{regional_coeff}")
-        
+        total *= REGIONAL_COEFFICIENTS.get(region, 1.0)
+        details.append(f"Региональный коэффициент ({region}): x{REGIONAL_COEFFICIENTS.get(region, 1.0)}")
+
         selected_items = sum(1 for k in data if data.get(k) and k not in ['area', 'floors', 'region'])
         if selected_items > 5:
             total *= 0.9
@@ -402,7 +425,7 @@ def calculate_cost(data):
         if area > 200:
             total *= 0.95
             details.append("Скидка за большую площадь: 5%")
-        
+
     except Exception as e:
         raise ValueError(f"Ошибка расчета: {str(e)}")
     
@@ -443,24 +466,33 @@ def calculate_and_send_result(user_id):
             user['current_project'] = None
 
 @bot.message_handler(func=lambda m: m.text == "📚 Строительный гайд")
-def show_guide(message):
+def show_guide_menu(message):
+    markup = types.InlineKeyboardMarkup()
+    for key in GUIDES:
+        btn = types.InlineKeyboardButton(GUIDES[key]['title'], callback_data=f"guide_{key}")
+        markup.add(btn)
+    bot.send_message(message.chat.id, "📚 Выберите раздел гайда:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('guide_'))
+def show_guide(call):
+    section = call.data.split('_')[1]
+    guide = GUIDES[section]
+    content = f"📖 {guide['title']}\n\n{guide['content']}"
+    bot.edit_message_text(content, call.message.chat.id, call.message.message_id)
+
+@bot.message_handler(func=lambda m: m.text == "⚙ Настройки")
+def handle_settings(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🗑️ Очистить историю", "🔙 Назад")
+    bot.send_message(message.chat.id, "⚙ Настройки:", reply_markup=markup)
+
+@bot.message_handler(func=lambda m: m.text == "🗑️ Очистить историю")
+def clear_history(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
-    guide = GUIDES[user['guide_progress']]
-    
-    markup = types.InlineKeyboardMarkup()
-    if user['guide_progress'] < len(GUIDES) - 1:
-        markup.add(types.InlineKeyboardButton("Далее ➡", callback_data="next_guide"))
-    markup.add(types.InlineKeyboardButton("Закрыть ❌", callback_data="close_guide"))
-    
-    bot.send_message(user_id, f"📖 {guide['title']}\n\n{guide['content']}", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data == "next_guide")
-def next_guide(call):
-    user_id = call.message.chat.id
-    user = get_user_data(user_id)
-    user['guide_progress'] = (user['guide_progress'] + 1) % len(GUIDES)
-    show_guide(call.message)
+    user['projects'] = {}
+    bot.send_message(user_id, "✅ История расчетов успешно очищена!")
+    show_main_menu(message)
 
 @bot.message_handler(func=lambda m: m.text == "📊 История расчетов")
 def show_history(message):
@@ -478,20 +510,6 @@ def show_history(message):
             response.append(f"{project['name']} - {status}\nСтоимость: {project['report']['total']:,.0f} руб.")
     
     bot.send_message(user_id, "\n".join(response))
-
-@bot.message_handler(func=lambda m: m.text == "🗑️ Очистить историю")
-def clear_history(message):
-    user_id = message.chat.id
-    user = get_user_data(user_id)
-    user['projects'] = {}
-    bot.send_message(user_id, "✅ История расчетов успешно очищена!")
-    show_main_menu(message)
-
-@bot.message_handler(func=lambda m: m.text == "⚙ Настройки")
-def show_settings(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🗑️ Очистить историю", "🔙 Назад")
-    bot.send_message(message.chat.id, "⚙ Настройки:", reply_markup=markup)
 
 def self_ping():
     while True:
