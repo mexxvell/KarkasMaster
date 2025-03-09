@@ -315,7 +315,7 @@ def track_event(event_type, step=None):
         analytics_data['completed_calculations'] += 1
     elif event_type == 'abandon':
         analytics_data['abandoned_steps'][step] = analytics_data['abandoned_steps'].get(step, 0) + 1
-    save_user_data()
+     
 
 def create_main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -344,7 +344,7 @@ def start_new_project(message):
     }
     user['current_project'] = project_id
     track_event('start')
-    save_user_data()
+     
     ask_next_question(user_id)
 
 def ask_next_question(user_id):
@@ -401,7 +401,7 @@ def process_answer(message, current_step):
         if answer == "❌ Отменить расчет":
             del user['projects'][user['current_project']]
             user['current_project'] = None
-            save_user_data()
+             
             show_main_menu(message)
             return
 
@@ -421,7 +421,7 @@ def process_answer(message, current_step):
         
         project['data']['step'] = current_step + 1
         user['last_active'] = datetime.now()
-        save_user_data()
+         
         
     except Exception as e:
         logger.error(f"Ошибка пользователя {user_id}: {str(e)}")
@@ -582,7 +582,7 @@ def calculate_and_send_result(user_id):
             'timestamp': datetime.now().strftime("%d.%m.%Y %H:%M")
         }
         project['completed'] = True
-        save_user_data()
+         
         
         send_result_message(user_id, total, details)
         schedule_reminder(user_id, project['name'])
@@ -593,7 +593,7 @@ def calculate_and_send_result(user_id):
         track_event('abandon', project['data'].get('step', 0))
     finally:
         user['current_project'] = None
-        save_user_data()
+         
 
 def send_result_message(user_id, total, details):
     result = [
@@ -657,7 +657,7 @@ def show_guides_menu(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
-    save_user_data()
+     
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     buttons = [g['title'] for g in GUIDES.values()]
@@ -675,7 +675,7 @@ def show_guide_content(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
-    save_user_data()
+     
     
     guide_title = message.text
     for key, guide in GUIDES.items():
@@ -700,7 +700,7 @@ def handle_settings(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
-    save_user_data()
+     
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("🗑️ Очистить историю")
@@ -733,7 +733,7 @@ def confirm_clear_history(message):
     
     if message.text == "✅ Да":
         user['projects'] = {}
-        save_user_data()
+         
         bot.send_message(
             user_id,
             f"{STYLES['success']} История расчетов успешно очищена!",
@@ -751,7 +751,7 @@ def show_history(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
-    save_user_data()
+     
     
     if not user['projects']:
         bot.send_message(
@@ -794,7 +794,7 @@ def save_project(message):
     
     project = user['projects'][project_id]
     project['saved'] = True
-    save_user_data()
+     
     
     bot.send_message(
         user_id,
@@ -807,7 +807,6 @@ def back_to_main_menu(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['current_project'] = None
-    save_user_data()
     show_main_menu(message)
 
 def self_ping():
