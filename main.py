@@ -337,7 +337,7 @@ def send_reminder(user_id, project_name):
     try:
         bot.send_message(
             user_id,
-            f"{STYLES['warning]} Напоминание о проекте '{project_name}'\n"
+            f"{STYLES['warning']} Напоминание о проекте '{project_name}'\n"
             f"Продолжить расчет? Используйте /menu"
         )
     except Exception as e:
@@ -661,7 +661,7 @@ def send_to_specialist(message):
     )
     
     if not project_id:
-        bot.send_message(user_id, f"{STYLES['error]} Нет активных проектов")
+        bot.send_message(user_id, f"{STYLES['error']} Нет активных проектов")
         return
     
     project = user['projects'].get(project_id)
@@ -823,7 +823,7 @@ def save_project(message):
     if not project_id:
         bot.send_message(
             user_id,
-            f"{STYLES['error]} Нет активного проекта для сохранения"
+            f"{STYLES['error']} Нет активного проекта для сохранения"
         )
         return
     
