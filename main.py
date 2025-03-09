@@ -1,3 +1,10 @@
+# requirements.txt
+Flask==2.3.2
+pyTelegramBotAPI==4.8.0
+gunicorn==23.0.0
+python-dotenv==0.21.0
+
+# main.py
 import os
 import logging
 import threading
@@ -284,8 +291,8 @@ def track_event(event_type, step=None):
 
 def create_main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    buttons = ["🏠 Новый проект", "📚 Строительный гайд", 
-              "📊 История расчетов", "⚙ Настройки"]
+    buttons = ["🏠 Новый проект", "📚 Гайды", 
+              "📊 История", "⚙ Настройки"]
     markup.add(*buttons)
     return markup
 
@@ -492,8 +499,11 @@ def calculate_and_send_result(user_id):
             f"💰 Итоговая стоимость: {total:,.0f} руб."
         ]
         
-        bot.send_message(user_id, "\n".join(result))
-        bot.send_message(user_id, "🏠 Возврат в главное меню", reply_markup=create_main_menu())
+        # Добавлена новая клавиатура
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+        markup.add("📨 Отправить для детального расчета", "🔙 Главное меню")
+        
+        bot.send_message(user_id, "\n".join(result), reply_markup=markup)
         schedule_reminder(user_id, project['name'])
         
     except Exception as e:
@@ -502,7 +512,44 @@ def calculate_and_send_result(user_id):
     finally:
         user['current_project'] = None
 
-@bot.message_handler(func=lambda m: m.text == "📚 Строительный гайд")
+@bot.message_handler(func=lambda m: m.text == "📨 Отправить для детального расчета")
+def send_detailed_calculation(message):
+    user_id = message.chat.id
+    user = get_user_data(user_id)
+    
+    if not user.get('current_project') and user['projects']:
+        project_id = max(user['projects'], key=lambda x: user['projects'][x]['created_at'])
+    else:
+        project_id = user['current_project']
+    
+    project = user['projects'].get(project_id)
+    
+    if not project or not project.get('report'):
+        bot.send_message(user_id, "❌ Проект не найден")
+        return
+    
+    if not project.get('completed'):
+        bot.send_message(user_id, "❌ Проект еще не завершен")
+        return
+    
+    report = project['report']
+    result = [
+        f"🔔 Новый запрос на расчет от @{message.from_user.username}",
+        "📊 Детализированный расчет:",
+        *report['details'],
+        "────────────────────────",
+        f"💰 Итоговая стоимость: {report['total']:,.0f} руб."
+    ]
+    
+    try:
+        bot.send_message(@firemannn3, "\n".join(result))
+        bot.send_message(user_id, "✅ Ваш запрос отправлен специалисту!")
+    except Exception as e:
+        bot.send_message(user_id, f"❌ Ошибка отправки: {str(e)}")
+    
+    show_main_menu(message)
+
+@bot.message_handler(func=lambda m: m.text == "📚 Гайды")
 def show_guide_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     buttons = [g['title'] for g in GUIDES.values()]
@@ -529,10 +576,6 @@ def show_guide_content(message):
 def back_to_guides(message):
     show_guide_menu(message)
 
-@bot.message_handler(func=lambda m: m.text == "🔙 Главное меню")
-def back_to_main(message):
-    show_main_menu(message)
-
 @bot.message_handler(func=lambda m: m.text == "⚙ Настройки")
 def handle_settings(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -547,11 +590,7 @@ def clear_history(message):
     bot.send_message(user_id, "✅ История расчетов успешно очищена!")
     show_main_menu(message)
 
-@bot.message_handler(func=lambda m: m.text == "🔙 Главное меню")
-def back_to_main(message):
-    show_main_menu(message)
-
-@bot.message_handler(func=lambda m: m.text == "📊 История расчетов")
+@bot.message_handler(func=lambda m: m.text == "📊 История")
 def show_history(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
