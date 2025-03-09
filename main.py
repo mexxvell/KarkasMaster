@@ -1,3 +1,10 @@
+# requirements.txt
+Flask==2.3.2
+pyTelegramBotAPI==4.8.0
+gunicorn==23.0.0
+python-dotenv==0.21.0
+
+# main.py
 import os
 import logging
 import threading
@@ -492,9 +499,10 @@ def calculate_and_send_result(user_id):
             f"💰 Примерная стоимость: {total:,.0f} руб."
         ]
         
-        # Добавлена новая клавиатура
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-        markup.add("📨 Отправить для детального расчета", "🔙 Главное меню")
+        # Исправленная клавиатура
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.row("📨 Отправить для детального расчета")
+        markup.row("🔙 Главное меню")
         
         bot.send_message(user_id, "\n".join(result), reply_markup=markup)
         schedule_reminder(user_id, project['name'])
@@ -599,6 +607,13 @@ def show_history(message):
             response.append(f"{project['name']} - {status}\nСтоимость: {project['report']['total']:,.0f} руб.")
     
     bot.send_message(user_id, "\n".join(response))
+
+@bot.message_handler(func=lambda m: m.text == "🔙 Главное меню")
+def back_to_main_menu(message):
+    user_id = message.chat.id
+    user = get_user_data(user_id)
+    user['current_project'] = None
+    show_main_menu(message)
 
 def self_ping():
     while True:
