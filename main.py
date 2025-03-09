@@ -337,7 +337,7 @@ def send_reminder(user_id, project_name):
     try:
         bot.send_message(
             user_id,
-            f"{STYLES['warning']} Напоминание о проекте '{project_name}'\n"
+            f"{STYLES['warning]} Напоминание о проекте '{project_name}'\n"
             f"Продолжить расчет? Используйте /menu"
         )
     except Exception as e:
@@ -363,7 +363,7 @@ def show_main_menu(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
-    bot.send_message(user_id, f"{STYLES['header']} Главное меню:", reply_markup=create_main_menu())
+    bot.send_message(user_id, f"{STYLES['header]} Главное меню:", reply_markup=create_main_menu())
     save_user_data()
 
 @bot.message_handler(func=lambda m: m.text == "🏠 Новый проект")
@@ -394,7 +394,7 @@ def ask_next_question(user_id):
     
     question = QUESTIONS[current_step]
     progress_text = (
-        f"{STYLES['header']} Шаг {current_step + 1}/{TOTAL_STEPS}\n"
+        f"{STYLES['header]} Шаг {current_step + 1}/{TOTAL_STEPS}\n"
         f"{question['text']}"
     )
     
@@ -463,7 +463,7 @@ def process_answer(message, current_step):
         logger.error(f"Ошибка пользователя {user_id}: {str(e)}")
         bot.send_message(
             user_id,
-            f"{STYLES['error']} Ошибка:\n{str(e)}\n\nПовторите ввод:",
+            f"{STYLES['error]} Ошибка:\n{str(e)}\n\nПовторите ввод:",
             reply_markup=create_keyboard(
                 question['options'],
                 question.get('row_width', 2),
@@ -624,7 +624,7 @@ def calculate_and_send_result(user_id):
         
     except Exception as e:
         logger.error(f"Ошибка расчета: {str(e)}")
-        bot.send_message(user_id, f"{STYLES['error]} Ошибка расчета: {str(e)}")
+        bot.send_message(user_id, f"{STYLES['error']} Ошибка расчета: {str(e)}")
         track_event('abandon', project['data'].get('step', 0))
     finally:
         user['current_project'] = None
