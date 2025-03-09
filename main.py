@@ -1,7 +1,6 @@
 import os
 import logging
 import threading
-import json
 from datetime import datetime
 from flask import Flask
 import telebot
@@ -27,41 +26,8 @@ bot = telebot.TeleBot(API_TOKEN)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# Конфигурация хранения данных
-DATA_FILE = 'user_data.json'
-
-def load_user_data():
-    try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            for user in data.values():
-                user['last_active'] = datetime.fromisoformat(user['last_active'])
-                for project in user['projects'].values():
-                    project['created_at'] = datetime.fromisoformat(project['created_at'])
-            return data
-    except (FileNotFoundError, json.JSONDecodeError, KeyError):
-        return {}
-    except Exception as e:
-        logger.error(f"Ошибка загрузки данных: {str(e)}")
-        return {}
-
-def save_user_data():
-    try:
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            data_to_save = {}
-            for user_id, user in user_data.items():
-                user_copy = user.copy()
-                user_copy['last_active'] = user['last_active'].isoformat()
-                user_copy['projects'] = {
-                    pid: {**p, 'created_at': p['created_at'].isoformat()}
-                    for pid, p in user['projects'].items()
-                }
-                data_to_save[user_id] = user_copy
-            json.dump(data_to_save, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.error(f"Ошибка сохранения данных: {str(e)}")
-
-user_data = load_user_data()
+# Глобальное хранилище данных
+user_data = {}
 
 analytics_data = {
     'started_calculations': 0,
@@ -305,7 +271,6 @@ def get_user_data(user_id):
             'last_active': datetime.now(),
             'reminders': []
         }
-        save_user_data()
     return user_data[user_id_str]
 
 def create_keyboard(items, row_width, skip_button=False):
@@ -364,7 +329,6 @@ def show_main_menu(message):
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
     bot.send_message(user_id, f"{STYLES['header']} Главное меню:", reply_markup=create_main_menu())
-    save_user_data()
 
 @bot.message_handler(func=lambda m: m.text == "🏠 Новый проект")
 def start_new_project(message):
@@ -856,8 +820,6 @@ def self_ping():
         threading.Event().wait(300)
 
 if __name__ == '__main__':
-    scheduler.add_job(save_user_data, 'interval', minutes=5)
-    
     threading.Thread(target=self_ping, daemon=True).start()
     
     bot_thread = threading.Thread(target=bot.polling, kwargs={'none_stop': True})
