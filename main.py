@@ -1,10 +1,3 @@
-# requirements.txt
-Flask==2.3.2
-pyTelegramBotAPI==4.8.0
-gunicorn==23.0.0
-python-dotenv==0.21.0
-
-# main.py
 import os
 import logging
 import threading
