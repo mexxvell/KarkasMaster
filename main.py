@@ -507,6 +507,14 @@ def show_analytics():
 def start_bot():
     bot.polling(none_stop=True)
 
+def self_ping():
+    while True:
+        try:
+            requests.get("https://karkasmaster.onrender.com")
+        except Exception as e:
+            logging.error(f"Ping failed: {str(e)}")
+        threading.Event().wait(300)  # Пинг каждые 5 минут
+
 if __name__ == '__main__':
     threading.Thread(target=self_ping, daemon=True).start()
     
