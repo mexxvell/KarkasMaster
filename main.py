@@ -535,7 +535,7 @@ def send_detailed_calculation(message):
     ]
     
     try:
-        bot.send_message(@firemannn3, "\n".join(result))
+        bot.send_message(515650034, "\n".join(result))
         bot.send_message(user_id, "✅ Ваш запрос отправлен специалисту!")
     except Exception as e:
         bot.send_message(user_id, f"❌ Ошибка отправки: {str(e)}")
