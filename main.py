@@ -1,11 +1,11 @@
 import os
 import logging
 import threading
-import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask import Flask
 import telebot
 from telebot import types
+import requests
 
 logging.basicConfig(level=logging.INFO)
 
@@ -165,7 +165,6 @@ QUESTIONS = [
 
 TOTAL_STEPS = len(QUESTIONS)
 
-# Персонализация и история запросов
 def get_user_data(user_id):
     if user_id not in user_data:
         user_data[user_id] = {
@@ -177,14 +176,12 @@ def get_user_data(user_id):
         }
     return user_data[user_id]
 
-# Интерактивный гайд
 GUIDES = [
     {"title": "Выбор фундамента", "content": "Фундамент - основа дома..."},
     {"title": "Типы кровли", "content": "Кровля защищает ваш дом..."},
     {"title": "Утепление дома", "content": "Правильное утепление..."}
 ]
 
-# Умные напоминания
 def schedule_reminder(user_id, project_name):
     def send_reminder():
         bot.send_message(user_id, f"🔔 Напоминание о проекте '{project_name}'. Продолжить расчет? Используйте /menu")
@@ -193,7 +190,6 @@ def schedule_reminder(user_id, project_name):
     user_data[user_id]['reminders'].append(timer)
     timer.start()
 
-# Аналитика
 def track_event(event_type, step=None):
     if event_type == 'start':
         analytics_data['started_calculations'] += 1
@@ -202,7 +198,6 @@ def track_event(event_type, step=None):
     elif event_type == 'abandon':
         analytics_data['abandoned_steps'][step] = analytics_data['abandoned_steps'].get(step, 0) + 1
 
-# Адаптивный интерфейс
 def create_adaptive_markup(user_id):
     user = get_user_data(user_id)
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -213,7 +208,7 @@ def create_adaptive_markup(user_id):
         markup.add("🏠 Новый проект")
         
     markup.add("📚 Строительный гайд", "📊 История расчетов")
-    markup.add("⚙ Настройки")
+    markup.add("⚙ Настройки", "🗑️ Очистить историю")
     return markup
 
 @bot.message_handler(commands=['start', 'menu'])
@@ -252,7 +247,7 @@ def ask_next_question(user_id):
     question = QUESTIONS[current_step]
     text = question['text']
     
-    if current_step == 1:  # Шаг с площадью
+    if current_step == 1:
         text += "\n(Введите число или выберите вариант)"
     
     progress = f"Шаг {current_step + 1} из {TOTAL_STEPS}\n{text}"
@@ -284,7 +279,6 @@ def process_answer(message, current_step):
         answer = message.text.strip()
         
         if 'options' in question:
-            # Обработка площади с единицами измерения
             if current_step == 1:
                 clean_answer = answer.replace(' м²', '')
             else:
@@ -296,7 +290,6 @@ def process_answer(message, current_step):
             if clean_answer not in question['options'] and clean_answer != 'Пропустить':
                 raise ValueError("Неверный вариант")
             
-            # Сохранение числового значения для площади
             if current_step == 1 and clean_answer != 'Пропустить':
                 project['data'][question['key']] = float(clean_answer)
             else:
@@ -338,7 +331,6 @@ def calculate_cost(data):
     details = []
     
     try:
-        # Основные работы
         floor_type = data.get('floors', 'Одноэтажный')
         base_price = COSTS['work']['base']['price']
         multiplier = COSTS['work']['base']['floor_multiplier'].get(floor_type, 1.0)
@@ -347,14 +339,12 @@ def calculate_cost(data):
         total += base_cost
         details.append(f"Основные работы ({floor_type}): {base_cost:,.0f} руб.")
         
-        # Фундамент
         foundation_type = data.get('foundation')
         if foundation_type and foundation_type != 'Пропустить':
             foundation_cost = COSTS['materials']['foundation'].get(foundation_type, 0)
             total += foundation_cost
             details.append(f"Фундамент ({foundation_type}): {foundation_cost:,.0f} руб.")
         
-        # Кровля
         roof_type = data.get('roof')
         if roof_type and roof_type != 'Пропустить':
             roof_area = calculate_roof_area(data)
@@ -362,7 +352,6 @@ def calculate_cost(data):
             total += roof_cost
             details.append(f"Кровля ({roof_type}): {roof_cost:,.0f} руб.")
         
-        # Утеплитель
         insulation_type = data.get('insulation')
         if insulation_type and insulation_type != 'Пропустить':
             min_thickness = COSTS['materials']['insulation'][insulation_type]['min_thickness']
@@ -371,21 +360,18 @@ def calculate_cost(data):
             total += insulation_cost
             details.append(f"Утеплитель ({insulation_type}): {insulation_cost:,.0f} руб.")
         
-        # Внешняя отделка
         exterior_type = data.get('exterior')
         if exterior_type and exterior_type != 'Пропустить':
             exterior_cost = area * COSTS['materials']['exterior'].get(exterior_type, 0)
             total += exterior_cost
             details.append(f"Внешняя отделка ({exterior_type}): {exterior_cost:,.0f} руб.")
         
-        # Внутренняя отделка
         interior_type = data.get('interior')
         if interior_type and interior_type != 'Пропустить':
             interior_cost = area * COSTS['materials']['interior'].get(interior_type, 0)
             total += interior_cost
             details.append(f"Внутренняя отделка ({interior_type}): {interior_cost:,.0f} руб.")
         
-        # Окна и двери
         windows_count = data.get('windows_count', 0) or 0
         entrance_doors = data.get('entrance_doors', 0) or 0
         inner_doors = data.get('inner_doors', 0) or 0
@@ -397,20 +383,17 @@ def calculate_cost(data):
         total += doors_windows_total
         details.append(f"Окна/двери: {doors_windows_total:,.0f} руб.")
         
-        # Терраса
         terrace_area = data.get('terrace_area', 0) or 0
         terrace_cost = terrace_area * COSTS['work']['terrace']
         total += terrace_cost
         if terrace_area > 0:
             details.append(f"Терраса: {terrace_cost:,.0f} руб.")
         
-        # Региональный коэффициент
         region = data.get('region', 'Другой')
         regional_coeff = REGIONAL_COEFFICIENTS.get(region, 1.0)
         total *= regional_coeff
         details.append(f"Региональный коэффициент ({region}): x{regional_coeff}")
         
-        # Применение скидок
         selected_items = sum(1 for k in data if data.get(k) and k not in ['area', 'floors', 'region'])
         if selected_items > 5:
             total *= 0.9
@@ -431,6 +414,12 @@ def calculate_and_send_result(user_id):
         project = user['projects'][user['current_project']]
         total, details = calculate_cost(project['data'])
         
+        project['report'] = {
+            'details': details,
+            'total': total,
+            'timestamp': datetime.now().strftime("%d.%m.%Y %H:%M")
+        }
+        
         project['completed'] = True
         project['total_cost'] = total
         track_event('complete')
@@ -443,6 +432,7 @@ def calculate_and_send_result(user_id):
         ]
         
         bot.send_message(user_id, "\n".join(result))
+        show_main_menu(types.Message(chat=types.Chat(id=user_id)))
         schedule_reminder(user_id, project['name'])
         
     except Exception as e:
@@ -483,10 +473,33 @@ def show_history(message):
     
     response = ["📋 Ваши проекты:"]
     for pid, project in user['projects'].items():
-        status = "✅ Завершен" if project['completed'] else "⏳ В процессе"
-        response.append(f"{project['name']} - {status} - {project.get('total_cost', 0):,.0f} руб.")
+        if project.get('report'):
+            status = f"✅ {project['report']['timestamp']}"
+            response.append(f"{project['name']} - {status}\nСтоимость: {project['report']['total']:,.0f} руб.")
     
     bot.send_message(user_id, "\n".join(response))
+
+@bot.message_handler(func=lambda m: m.text == "🗑️ Очистить историю")
+def clear_history(message):
+    user_id = message.chat.id
+    user = get_user_data(user_id)
+    user['projects'] = {}
+    bot.send_message(user_id, "✅ История расчетов успешно очищена!")
+    show_main_menu(message)
+
+@bot.message_handler(func=lambda m: m.text == "⚙ Настройки")
+def show_settings(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🗑️ Очистить историю", "🔙 Назад")
+    bot.send_message(message.chat.id, "⚙ Настройки:", reply_markup=markup)
+
+def self_ping():
+    while True:
+        try:
+            requests.get("https://karkasmaster.onrender.com")
+        except Exception as e:
+            logging.error(f"Ping failed: {str(e)}")
+        threading.Event().wait(300)
 
 app = Flask(__name__)
 
@@ -507,21 +520,12 @@ def show_analytics():
 def start_bot():
     bot.polling(none_stop=True)
 
-def self_ping():
-    while True:
-        try:
-            requests.get("https://karkasmaster.onrender.com")
-        except Exception as e:
-            logging.error(f"Ping failed: {str(e)}")
-        threading.Event().wait(300)  # Пинг каждые 5 минут
-
 if __name__ == '__main__':
     threading.Thread(target=self_ping, daemon=True).start()
     
-    # Запуск бота в отдельном потоке
     bot_thread = threading.Thread(target=start_bot)
     bot_thread.daemon = True
     bot_thread.start()
     
-    # Запуск Flask приложения
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
