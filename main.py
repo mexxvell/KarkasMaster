@@ -9,8 +9,6 @@ from telebot import types
 logging.basicConfig(level=logging.INFO)
 
 API_TOKEN = os.getenv('API_TOKEN')
-if not API_TOKEN:
-    raise ValueError("API_TOKEN environment variable is missing")
 bot = telebot.TeleBot(API_TOKEN)
 
 user_data = {}
@@ -97,7 +95,7 @@ QUESTIONS = [
     },
     {
         'text': '🏡 Площадь дома (кв.м):',
-        'options': ['100 м²', '120 м²', '150 м²', 'Пропустить'],
+        'options': ['100', '120', '150', 'Пропустить'],
         'key': 'area',
         'max': 1000
     },
@@ -190,7 +188,7 @@ def schedule_reminder(user_id, project_name):
     def send_reminder():
         bot.send_message(user_id, f"🔔 Напоминание о проекте '{project_name}'. Продолжить расчет? Используйте /menu")
     
-    timer = threading.Timer(3600, send_reminder)  # Напоминание через 1 час
+    timer = threading.Timer(3600, send_reminder)
     user_data[user_id]['reminders'].append(timer)
     timer.start()
 
@@ -252,11 +250,11 @@ def ask_next_question(user_id):
     
     question = QUESTIONS[current_step]
     text = question['text']
-    progress = f"Шаг {current_step + 1} из {TOTAL_STEPS}\n{text}"
     
-    # Адаптивная подсказка
-    if current_step > 3 and 'insulation' not in project['data']:
-        progress += "\n\n💡 Совет: Не пропускайте утеплитель - это сэкономит до 30% на отоплении!"
+    if current_step == 1:  # Шаг с площадью
+        text += "\n(Введите число или выберите вариант)"
+    
+    progress = f"Шаг {current_step + 1} из {TOTAL_STEPS}\n{text}"
     
     if 'options' in question:
         emoji_char = EMOJI.get(question['key'], '')
@@ -264,7 +262,10 @@ def ask_next_question(user_id):
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
         
         for opt in options:
-            markup.add(f"{emoji_char} {opt}")
+            if current_step == 1 and opt != 'Пропустить':
+                markup.add(f"{opt} м²")
+            else:
+                markup.add(f"{emoji_char} {opt}")
         markup.add("Пропустить")
     else:
         markup = types.ReplyKeyboardRemove()
@@ -279,17 +280,29 @@ def process_answer(message, current_step):
     question = QUESTIONS[current_step]
     
     try:
+        answer = message.text.strip()
+        
         if 'options' in question:
-            emoji_char = EMOJI.get(question['key'], '')
-            clean_answer = message.text.replace(f"{emoji_char} ", "").strip()
+            # Обработка площади с единицами измерения
+            if current_step == 1:
+                clean_answer = answer.replace(' м²', '')
+            else:
+                emoji_char = EMOJI.get(question['key'], '')
+                clean_answer = answer.replace(f"{emoji_char} ", "")
+                
+            clean_answer = clean_answer.strip()
             
             if clean_answer not in question['options'] and clean_answer != 'Пропустить':
                 raise ValueError("Неверный вариант")
             
-            project['data'][question['key']] = clean_answer if clean_answer != 'Пропустить' else None
+            # Сохранение числового значения для площади
+            if current_step == 1 and clean_answer != 'Пропустить':
+                project['data'][question['key']] = float(clean_answer)
+            else:
+                project['data'][question['key']] = clean_answer if clean_answer != 'Пропустить' else None
             
         elif question.get('type') == 'number':
-            value = float(message.text)
+            value = float(answer)
             
             if 'min' in question and value < question['min']:
                 raise ValueError(f"Минимальное значение: {question['min']}")
@@ -309,53 +322,107 @@ def process_answer(message, current_step):
     
     ask_next_question(user_id)
 
+def calculate_roof_area(data):
+    area = data.get('area', 100) or 100
+    floors = data.get('floors', 'Одноэтажный')
+    
+    if floors == 'Двухэтажный':
+        return area * 0.6
+    elif floors == 'С мансардой':
+        return area * 1.1
+    return area * 0.8
+
 def calculate_cost(data):
     total = 0
     details = []
     
-    # Основные работы
-    floor_type = data.get('floors', 'Одноэтажный')
-    base_price = COSTS['work']['base']['price']
-    multiplier = COSTS['work']['base']['floor_multiplier'].get(floor_type, 1.0)
-    area = data.get('area', 100) or 100  # Исправление ошибки NoneType
-    base_cost = area * base_price * multiplier
-    total += base_cost
-    details.append(f"Основные работы: {base_cost:,.0f} руб.")
-    
-    # Фундамент
-    foundation_type = data.get('foundation')
-    if foundation_type and foundation_type != 'Пропустить':
-        foundation_cost = COSTS['materials']['foundation'].get(foundation_type, 0)
-        total += foundation_cost
-        details.append(f"Фундамент: {foundation_cost:,.0f} руб.")
-    
-    # Кровля
-    roof_type = data.get('roof')
-    if roof_type and roof_type != 'Пропустить':
-        roof_area = calculate_roof_area(data)
-        roof_cost = roof_area * COSTS['materials']['roof'].get(roof_type, 0)
-        total += roof_cost
-        details.append(f"Кровля: {roof_cost:,.0f} руб.")
-    
-    # Остальные расчеты аналогично с проверкой на None...
-    
-    # Региональный коэффициент
-    region = data.get('region', 'Другой')
-    total *= REGIONAL_COEFFICIENTS.get(region, 1.0)
-    details.append(f"Региональный коэффициент: {REGIONAL_COEFFICIENTС.get(region, 1.0)}")
+    try:
+        # Основные работы
+        floor_type = data.get('floors', 'Одноэтажный')
+        base_price = COSTS['work']['base']['price']
+        multiplier = COSTS['work']['base']['floor_multiplier'].get(floor_type, 1.0)
+        area = data.get('area', 100) or 100
+        base_cost = area * base_price * multiplier
+        total += base_cost
+        details.append(f"Основные работы ({floor_type}): {base_cost:,.0f} руб.")
+        
+        # Фундамент
+        foundation_type = data.get('foundation')
+        if foundation_type and foundation_type != 'Пропустить':
+            foundation_cost = COSTS['materials']['foundation'].get(foundation_type, 0)
+            total += foundation_cost
+            details.append(f"Фундамент ({foundation_type}): {foundation_cost:,.0f} руб.")
+        
+        # Кровля
+        roof_type = data.get('roof')
+        if roof_type and roof_type != 'Пропустить':
+            roof_area = calculate_roof_area(data)
+            roof_cost = roof_area * COSTS['materials']['roof'].get(roof_type, 0)
+            total += roof_cost
+            details.append(f"Кровля ({roof_type}): {roof_cost:,.0f} руб.")
+        
+        # Утеплитель
+        insulation_type = data.get('insulation')
+        if insulation_type and insulation_type != 'Пропустить':
+            min_thickness = COSTS['materials']['insulation'][insulation_type]['min_thickness']
+            actual_thickness = max(data.get('insulation_thickness', 0) or 0, min_thickness)
+            insulation_cost = (actual_thickness / 100) * area * COSTS['materials']['insulation'][insulation_type]['price']
+            total += insulation_cost
+            details.append(f"Утеплитель ({insulation_type}): {insulation_cost:,.0f} руб.")
+        
+        # Внешняя отделка
+        exterior_type = data.get('exterior')
+        if exterior_type and exterior_type != 'Пропустить':
+            exterior_cost = area * COSTS['materials']['exterior'].get(exterior_type, 0)
+            total += exterior_cost
+            details.append(f"Внешняя отделка ({exterior_type}): {exterior_cost:,.0f} руб.")
+        
+        # Внутренняя отделка
+        interior_type = data.get('interior')
+        if interior_type and interior_type != 'Пропустить':
+            interior_cost = area * COSTS['materials']['interior'].get(interior_type, 0)
+            total += interior_cost
+            details.append(f"Внутренняя отделка ({interior_type}): {interior_cost:,.0f} руб.")
+        
+        # Окна и двери
+        windows_count = data.get('windows_count', 0) or 0
+        entrance_doors = data.get('entrance_doors', 0) or 0
+        inner_doors = data.get('inner_doors', 0) or 0
+        
+        windows_cost = windows_count * COSTS['materials']['windows']
+        entrance_doors_cost = entrance_doors * COSTS['materials']['doors']['входная']
+        inner_doors_cost = inner_doors * COSTS['materials']['doors']['межкомнатная']
+        doors_windows_total = windows_cost + entrance_doors_cost + inner_doors_cost
+        total += doors_windows_total
+        details.append(f"Окна/двери: {doors_windows_total:,.0f} руб.")
+        
+        # Терраса
+        terrace_area = data.get('terrace_area', 0) or 0
+        terrace_cost = terrace_area * COSTS['work']['terrace']
+        total += terrace_cost
+        if terrace_area > 0:
+            details.append(f"Терраса: {terrace_cost:,.0f} руб.")
+        
+        # Региональный коэффициент
+        region = data.get('region', 'Другой')
+        regional_coeff = REGIONAL_COEFFICIENTS.get(region, 1.0)
+        total *= regional_coeff
+        details.append(f"Региональный коэффициент ({region}): x{regional_coeff}")
+        
+        # Применение скидок
+        selected_items = sum(1 for k in data if data.get(k) and k not in ['area', 'floors', 'region'])
+        if selected_items > 5:
+            total *= 0.9
+            details.append("Скидка за комплексный заказ: 10%")
+        
+        if area > 200:
+            total *= 0.95
+            details.append("Скидка за большую площадь: 5%")
+        
+    except Exception as e:
+        raise ValueError(f"Ошибка расчета: {str(e)}")
     
     return round(total, 2), details
-
-def calculate_roof_area(data):
-    area = data.get('area', 100) or 100  # Default to 100 if area is not provided
-    floor_type = data.get('floors', 'Одноэтажный')
-    if floor_type == 'Одноэтажный':
-        return area
-    elif floor_type == 'Двухэтажный':
-        return area * 1.5  # Assuming the roof area is 1.5 times the base area for two-story houses
-    elif floor_type == 'С мансардой':
-        return area * 1.2  # Assuming the roof area is 1.2 times the base area for houses with an attic
-    return area
 
 def calculate_and_send_result(user_id):
     try:
@@ -367,12 +434,22 @@ def calculate_and_send_result(user_id):
         project['total_cost'] = total
         track_event('complete')
         
-        bot.send_message(user_id, f"✅ Расчет завершен!\n💰 Итоговая стоимость: {total:,.0f} руб.\n\nДетали:\n" + "\n".join(details))
+        result = [
+            "📊 Детализированный расчет стоимости:",
+            *details,
+            "────────────────────────",
+            f"💰 Итоговая стоимость: {total:,.0f} руб."
+        ]
+        
+        bot.send_message(user_id, "\n".join(result))
         schedule_reminder(user_id, project['name'])
         
     except Exception as e:
         bot.send_message(user_id, f"⚠️ Ошибка: {str(e)}")
         track_event('abandon', project['data'].get('step', 0))
+    finally:
+        if user_id in user_data:
+            user['current_project'] = None
 
 @bot.message_handler(func=lambda m: m.text == "📚 Строительный гайд")
 def show_guide(message):
@@ -418,7 +495,7 @@ def home():
 
 @app.route('/analytics')
 def show_analytics():
-    completion_rate = (analytics_data['completed_calculations'] / analytics_data['started_calculations'] * 100) if analytics_data['started_calculations'] > 0 else 0
+    completion_rate = analytics_data['completed_calculations'] / analytics_data['started_calculations'] * 100 if analytics_data['started_calculations'] > 0 else 0
     return f"""
     📊 Аналитика:
     Начато расчетов: {analytics_data['started_calculations']}
