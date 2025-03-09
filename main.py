@@ -83,15 +83,15 @@ COSTS = {
 }
 
 REGIONAL_COEFFICIENTS = {
-    'Москва': 1.5,
-    'СПб': 1.3,
-    'Другой': 1.0
+    'Калужская обл': 1,
+    'Московская обл': 1.2,
+    'Другой': 1.5
 }
 
 QUESTIONS = [
     {
         'text': '📍 Регион строительства:',
-        'options': ['Москва', 'СПб', 'Другой'],
+        'options': ['Калужская обл', 'Московская обл', 'Другой'],
         'key': 'region',
         'row_width': 2
     },
@@ -178,63 +178,78 @@ def get_user_data(user_id):
             'projects': {},
             'current_project': None,
             'last_active': datetime.now(),
-            'guide_progress': 0,
             'reminders': []
         }
     return user_data[user_id]
 
 GUIDES = {
     'foundation': {
-        'title': '🏗️ Фундамент',
-        'content': '''🔨 <b>Типы фундаментов:</b>
-1. Свайно-винтовой - идеален для неровного рельефа
-2. Ленточный - для тяжелых конструкций
-3. Плитный - максимальная устойчивость
+        'title': '🏗️ Выбор фундамента',
+        'content': '''
+🔍 <b>Подробный гайд по фундаментам:</b>
 
-💡 <b>Советы:</b>
-✅ Экономить: на декоративной отделке
-❌ Не экономить: на гидроизоляции
-🕒 Срок службы: 50-100 лет''',
-        'image': 'https://example.com/foundation.jpg'
+1. <u>Свайно-винтовой</u>
+   - Стоимость: 15 000-20 000 руб/м²
+   - Срок монтажа: 2-3 дня
+   - Грунты: болотистые, пучинистые
+   - Плюсы: быстрый монтаж, низкая цена
+   - Минусы: требует антикоррозийной обработки
+
+2. <u>Ленточный</u>
+   - Стоимость: 20 000-25 000 руб/м²
+   - Срок монтажа: 14-21 день
+   - Грунты: стабильные, песчаные
+   - Плюсы: высокая несущая способность
+   - Минусы: требует времени на усадку
+
+💡 <b>Советы инженеров:</b>
+✅ Всегда делайте геологию грунта
+❌ Не экономьте на гидроизоляции
+📆 Оптимальный сезон монтажа: лето-осень
+'''
     },
     'walls': {
         'title': '🧱 Каркас и стены',
-        'content': '''🏠 <b>Технологии строительства:</b>
-1. Каркасная - быстрая сборка
-2. Двойной каркас - повышенная прочность
-3. Перекрестное утепление - для холодных регионов
+        'content': '''
+🔍 <b>Технологии строительства:</b>
 
-💡 <b>Рекомендации:</b>
-✅ Экономить: на внутренней обшивке
-❌ Не экономить: на качестве OSB-плит
-🌡️ Теплоизоляция: минимум 200 мм утеплителя''',
-        'image': 'https://example.com/walls.jpg'
+1. <u>Платформа</u>
+   - Толщина стен: 200-250 мм
+   - Утеплитель: базальтовая вата
+   - Обшивка: OSB-3 12 мм
+   - Пароизоляция: обязательна
+
+2. <u>Двойной каркас</u>
+   - Толщина стен: 300-400 мм
+   - Перекрестное утепление
+   - Шумоизоляция: 20-30 дБ
+
+📐 <b>Расчет материалов:</b>
+- Стойки: 50x150 мм с шагом 600 мм
+- Обвязки: двойная доска 50x200 мм
+- Крепеж: оцинкованные уголки
+'''
     },
     'roof': {
-        'title': '🏛️ Кровельная система',
-        'content': '''🌧️ <b>Конструктивные элементы:</b>
-1. Стропильная система - основа кровли
-2. Обрешетка - тип зависит от покрытия
-3. Утепление - обязательно для жилых помещений
+        'title': '🏛️ Кровельные системы',
+        'content': '''
+🔍 <b>Типы кровельных систем:</b>
 
-💡 <b>Важно:</b>
-✅ Экономить: на декоративных коньках
-❌ Не экономить: на ветрозащитной мембране
-📐 Уклон: от 28° для металлочерепицы''',
-        'image': 'https://example.com/roof.jpg'
-    },
-    'insulation': {
-        'title': '❄️ Теплоизоляция',
-        'content': '''🧊 <b>Схемы утепления:</b>
-1. Базальтовые плиты - негорючий материал
-2. Эковата - бесшовное покрытие
-3. ППУ-напыление - высокая стоимость
+1. <u>Холодная кровля</u>
+   - Уклон: 25-45°
+   - Вентиляция: продухи + коньковый аэратор
+   - Срок службы: 25-50 лет
 
-💡 <b>Правила монтажа:</b>
-✅ Экономить: на толщине в гараже
-❌ Не экономить: на пароизоляционной пленке
-📏 Толщина: 150-200 мм для жилых помещений''',
-        'image': 'https://example.com/insulation.jpg'
+2. <u>Теплая кровля</u>
+   - Утеплитель: 250-300 мм
+   - Пароизоляция: фольгированная мембрана
+   - Контробрешетка: 50 мм зазор
+
+⚡ <b>Важно:</b>
+- Расчет снеговой нагрузки по СП 20.13330
+- Используйте ветрозащитные планки
+- Монтаж ендовы с двойным слоем гидроизоляции
+'''
     }
 }
 
@@ -242,11 +257,9 @@ def create_keyboard(items, row_width, skip_button=False):
     markup = types.ReplyKeyboardMarkup(row_width=row_width, resize_keyboard=True)
     filtered = [item for item in items if item != 'Пропустить']
     
-    # Добавляем кнопки порциями
     for i in range(0, len(filtered), row_width):
         markup.add(*filtered[i:i+row_width])
     
-    # Добавляем кнопки управления
     if skip_button:
         markup.add('Пропустить')
     markup.add('❌ Отменить расчет')
@@ -334,15 +347,15 @@ def process_answer(message, current_step):
             show_main_menu(message)
             return
 
-        # Обработка числовых значений
         if answer == 'Пропустить':
             project['data'][question['key']] = None
-        elif question['key'] in ['windows_count', 'entrance_doors', 'inner_doors']:
-            project['data'][question['key']] = int(answer)
-        elif question['key'] in ['area', 'terrace_area', 'insulation_thickness']:
-            project['data'][question['key']] = float(answer)
         else:
-            project['data'][question['key']] = answer
+            if question['key'] in ['windows_count', 'entrance_doors', 'inner_doors']:
+                project['data'][question['key']] = int(answer)
+            elif question['key'] in ['area', 'terrace_area']:
+                project['data'][question['key']] = float(answer)
+            else:
+                project['data'][question['key']] = answer
         
         project['data']['step'] = current_step + 1
         user['last_active'] = datetime.now()
@@ -459,7 +472,8 @@ def calculate_cost(data):
 def calculate_and_send_result(user_id):
     try:
         user = get_user_data(user_id)
-        project = user['projects'][user['current_project']]
+        project_id = user['current_project']
+        project = user['projects'][project_id]
         total, details = calculate_cost(project['data'])
         
         project['report'] = {
@@ -467,7 +481,6 @@ def calculate_and_send_result(user_id):
             'total': total,
             'timestamp': datetime.now().strftime("%d.%m.%Y %H:%M")
         }
-        
         project['completed'] = True
         project['total_cost'] = total
         track_event('complete')
@@ -480,52 +493,37 @@ def calculate_and_send_result(user_id):
         ]
         
         bot.send_message(user_id, "\n".join(result))
-        show_main_menu(types.Message(chat=types.Chat(id=user_id)))
+        bot.send_message(user_id, "🏠 Возврат в главное меню", reply_markup=create_main_menu())
         schedule_reminder(user_id, project['name'])
         
     except Exception as e:
         bot.send_message(user_id, f"⚠️ Ошибка: {str(e)}")
         track_event('abandon', project['data'].get('step', 0))
     finally:
-        if user_id in user_data:
-            user['current_project'] = None
+        user['current_project'] = None
 
 @bot.message_handler(func=lambda m: m.text == "📚 Строительный гайд")
 def show_guide_menu(message):
-    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     for key in GUIDES:
-        markup.add(types.InlineKeyboardButton(GUIDES[key]['title'], callback_data=f"guide_{key}"))
-    markup.add(types.InlineKeyboardButton("🔙 Главное меню", callback_data="guide_back"))
+        markup.add(types.KeyboardButton(GUIDES[key]['title']))
+    markup.add("🔙 Назад")
     bot.send_message(message.chat.id, "📚 Выберите раздел гайда:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('guide'))
-def handle_guides(call):
-    user_id = call.message.chat.id
-    if call.data == "guide_back":
-        bot.delete_message(user_id, call.message.message_id)
-        show_main_menu(call.message)
-        return
-    
-    if call.data == "guide_list":
-        show_guide_menu(call.message)
-        return
-    
-    section = call.data.split('_')[1]
-    guide = GUIDES[section]
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 Назад к списку", callback_data="guide_list"))
-    
-    try:
-        bot.edit_message_text(
-            chat_id=user_id,
-            message_id=call.message.message_id,
-            text=f"📖 <b>{guide['title']}</b>\n\n{guide['content']}",
-            parse_mode='HTML',
-            reply_markup=markup
-        )
-    except Exception as e:
-        logging.error(f"Error editing message: {str(e)}")
+@bot.message_handler(func=lambda m: m.text in [g['title'] for g in GUIDES.values()])
+def show_guide_content(message):
+    guide_title = message.text
+    for key, guide in GUIDES.items():
+        if guide['title'] == guide_title:
+            content = f"📖 <b>{guide['title']}</b>\n\n{guide['content']}"
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add("🔙 К списку гайдов")
+            bot.send_message(message.chat.id, content, parse_mode='HTML', reply_markup=markup)
+            break
+
+@bot.message_handler(func=lambda m: m.text == "🔙 К списку гайдов")
+def back_to_guides(message):
+    show_guide_menu(message)
 
 @bot.message_handler(func=lambda m: m.text == "⚙ Настройки")
 def handle_settings(message):
