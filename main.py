@@ -84,7 +84,7 @@ COST_CONFIG = {
         'wall_cladding': {
             'OSB-3': {'price_per_m2': 400},
             'Вагонка': {'price_per_m2': 500},
-            'Штукатурка': {'price_per_m2': 300}
+            'Штукатурка': {'price_per_m2': 300},
             'Сайдинг': {'price_per_m2': 450}
         },
         'roof': {
