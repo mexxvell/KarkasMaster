@@ -85,6 +85,7 @@ COST_CONFIG = {
             'OSB-3': {'price_per_m2': 400},
             'Вагонка': {'price_per_m2': 500},
             'Штукатурка': {'price_per_m2': 300}
+            'Сайдинг': {'price_per_m2': 450}
         },
         'roof': {
             'Металлочерепица': {'price_per_m2': 500, 'slope_factor': 1.2},
@@ -658,7 +659,9 @@ def export_to_pdf(message):
     # Генерация PDF
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
+    pdf.setFont("DejaVuSerif", 12)
     text = pdf.beginText(40, 750)
+    clean_details = [line.replace('<b>', '').replace('</b>', '').replace('<code>', '') for line in details]
     text.setFont("Courier", 12)
     text.textLine(f"Смета для проекта: {project['name']}")
     text.textLine(f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
