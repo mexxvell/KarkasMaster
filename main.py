@@ -61,45 +61,37 @@ EMOJI_MAP = {
 
 COST_CONFIG = {
     'materials': {
-        'foundation': {
-            'Свайно-винтовой': {'price_per_pile': 2500, 'depth': 2.5}
-        },
-        'walls': {
-            'Каркасные': {'price_per_m2': 1200, 'thickness': 0.15}
-        },
+        'foundation': {'Свайно-винтовой': 2500},
+        'walls': {'Каркасные': 1200},
         'roof': {
-            'Металлочерепица': {'price_per_m2': 500, 'slope_factor': 1.2},
-            'Мягкая кровля': {'price_per_m2': 700, 'slope_factor': 1.1},
-            'Фальцевая кровля': {'price_per_m2': 900, 'slope_factor': 1.3}
+            'Металлочерепица': 500,
+            'Мягкая кровля': 700,
+            'Фальцевая кровля': 900
         },
         'insulation': {
-            'Минеральная вата': {'price_per_m3': 3000, 'density': 35},
-            'Эковата': {'price_per_m3': 2500, 'density': 45},
-            'Пенополистирол': {'price_per_m3': 4000, 'density': 25}
+            'Минеральная вата': {'price': 3000, 'density': 35},
+            'Эковата': {'price': 2500, 'density': 45},
+            'Пенополистирол': {'price': 4000, 'density': 25}
         },
         'exterior': {
-            'Сайдинг': {'price_per_m2': 400, 'consumption': 1.1},
-            'Вагонка': {'price_per_m2': 500, 'consumption': 1.05},
-            'Штукатурка': {'price_per_m2': 300, 'consumption': 1.2}
+            'Сайдинг': 400,
+            'Вагонка': 500,
+            'Штукатурка': 300
         },
         'interior': {
-            'Вагонка': {'price_per_m2': 600, 'consumption': 1.1},
-            'Гипсокартон': {'price_per_m2': 400, 'consumption': 1.05}
+            'Вагонка': 600,
+            'Гипсокартон': 400
         },
-        'windows': {'price_per_unit': 8000, 'avg_area': 1.5},
+        'windows': 8000,
         'doors': {
-            'входная': {'price': 15000, 'avg_area': 2.0},
-            'межкомнатная': {'price': 8000, 'avg_area': 1.8}
+            'входная': 15000,
+            'межкомнатная': 8000
         }
     },
     'work': {
-        'excavation': {'price_per_m3': 1500},
-        'concrete_works': {'price_per_m3': 3000},
-        'carpentry': {'price_per_m2': 1000},
-        'roof_installation': {'price_per_m2': 800},
-        'insulation_work': {'price_per_m3': 2000},
-        'exterior_work': {'price_per_m2': 500},
-        'interior_work': {'price_per_m2': 700}
+        'excavation': 1500,
+        'carpentry': 1000,
+        'roof_installation': 800
     }
 }
 
@@ -142,21 +134,14 @@ QUESTIONS = [
         'key': 'height',
         'row_width': 2,
         'validation': lambda x: x in ['2.5', '3.0'],
-        'condition': lambda data: data.get('house_style') == 'Скандинавский стиль'
+        'condition': lambda data: data['house_style'] == 'Скандинавский стиль'
     },
     {
         'text': 'этажность 🏠:',
         'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой'],
         'key': 'floors',
         'row_width': 2,
-        'condition': lambda data: data.get('house_style') == 'Скандинавский стиль'
-    },
-    {
-        'text': 'Кровля 🏛️:',
-        'options': ['Металлочерепица', 'Мягкая кровля'],
-        'key': 'roof_type',
-        'row_width': 2,
-        'condition': lambda data: data.get('house_style') == 'Скандинавский стиль'
+        'condition': lambda data: data['house_style'] == 'Скандинавский стиль'
     },
     {
         'text': 'Утепление ❄️:',
@@ -182,7 +167,7 @@ QUESTIONS = [
         'key': 'window_count',
         'row_width': 5,
         'validation': lambda x: 1 <= int(x) <= 10,
-        'condition': lambda data: data.get('house_style') == 'Скандинавский стиль'
+        'condition': lambda data: data['house_style'] == 'Скандинавский стиль'
     },
     {
         'text': 'Входные двери 🚪:',
@@ -201,6 +186,62 @@ QUESTIONS = [
 ]
 
 TOTAL_STEPS = len(QUESTIONS)
+
+GUIDES = {
+    'foundation': {
+        'title': '🏗️ Выбор фундамента',
+        'content': '''🔍 <b>Подробный гайд по фундаментам:</b>
+1. <u>Свайно-винтовой</u>
+   - Стоимость: 15 000-20 000 руб/м²
+   - Срок монтажа: 2-3 дня
+   - Грунты: болотистые, пучинистые
+   - Плюсы: быстрый монтаж, низкая цена
+   - Минусы: требует антикоррозийной обработки
+2. <u>Ленточный</u>
+   - Стоимость: 20 000-25 000 руб/м²
+   - Срок монтажа: 14-21 день
+   - Грунты: стабильные, песчаные
+   - Плюсы: высокая несущая способность
+   - Минусы: требует времени на усадку
+💡 <b>Советы инженеров:</b>
+✅ Всегда делайте геологию грунта
+❌ Не экономьте на гидроизоляции
+📆 Оптимальный сезон монтажа: лето-осень'''
+    },
+    'walls': {
+        'title': '🧱 Каркас и стены',
+        'content': '''🔍 <b>Технологии строительства:</b>
+1. <u>Платформа</u>
+   - Толщина стен: 200-250 мм
+   - Утеплитель: базальтовая вата
+   - Обшивка: OSB-3 12 мм
+   - Пароизоляция: обязательна
+2. <u>Двойной каркас</u>
+   - Толщина стен: 300-400 мм
+   - Перекрестное утепление
+   - Шумоизоляция: 20-30 дБ
+📐 <b>Расчет материалов:</b>
+- Стойки: 50x150 мм с шагом 600 мм
+- Обвязки: двойная доска 50x200 мм
+- Крепеж: оцинкованные уголки'''
+    },
+    'roof': {
+        'title': '🏛️ Кровельные системы',
+        'content': '''🔍 <b>Типы кровельных систем:</b>
+1. <u>Холодная кровля</u>
+   - Уклон: 25-45°
+   - Вентиляция: продухи + коньковый аэратор
+   - Срок службы: 25-50 лет
+2. <u>Теплая кровля</u>
+   - Утеплитель: 250-300 мм
+   - Пароизоляция: фольгированная мембрана
+   - Контробрешетка: 50 мм зазор
+⚡ <b>Важно:</b>
+- Расчет снеговой нагрузки по СП 20.13330
+- Используйте ветрозащитные планки
+- Монтаж ендовы с двойным слоем гидроизоляции'''
+    }
+}
 
 def get_user_data(user_id):
     user_id_str = str(user_id)
@@ -271,7 +312,7 @@ def start_new_project(message):
     project_id = f"project_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     user['projects'][project_id] = {
         'name': f"Проект от {datetime.now().strftime('%d.%m.%Y')}",
-        'data': {},
+        'data': {'foundation_type': 'Свайно-винтовой'},  # Автоматически устанавливаем фундамент
         'created_at': datetime.now(),
         'completed': False
     }
@@ -284,7 +325,13 @@ def ask_next_question(user_id):
     project = user['projects'][user['current_project']]
     current_step = project['data'].get('step', 0)
     
-    # Пропуск шагов в зависимости от стиля дома
+    # Устанавливаем значения по умолчанию для стилей
+    if project['data'].get('house_style') in ['A-frame', 'BARNHOUSE', 'ХОЗБЛОК']:
+        project['data'].setdefault('floors', 'Одноэтажный')
+        project['data'].setdefault('roof_type', 'Фальцевая кровля')
+        project['data'].setdefault('window_count', 1)
+        project['data'].setdefault('height', 3.0 if project['data']['house_style'] == 'A-frame' else 2.5)
+    
     while current_step < TOTAL_STEPS:
         question = QUESTIONS[current_step]
         if 'condition' in question and not question['condition'](project['data']):
@@ -310,7 +357,7 @@ def validate_input(answer, question):
     if answer not in question['options']:
         return f"Выберите вариант из списка: {', '.join(question['options'])}"
         
-    if question['key'] in ['width', 'length', 'height']:
+    if question['key'] in ['width', 'length']:
         try:
             value = float(answer.replace(',', '.'))
             if 'validation' in question and not question['validation'](answer):
@@ -369,91 +416,66 @@ def process_answer(message, current_step):
 class DimensionCalculator:
     @staticmethod
     def calculate_foundation(data):
-        # Всегда свайно-винтовой
         perimeter = 2 * (data['width'] + data['length'])
-        config = COST_CONFIG['materials']['foundation']['Свайно-винтовой']
         piles_count = math.ceil(perimeter / 1.5)
-        return piles_count * config['price_per_pile']
-
+        return piles_count * COST_CONFIG['materials']['foundation']['Свайно-винтовой']
+    
     @staticmethod
     def calculate_walls(data):
-        # Всегда каркасные стены
         perimeter = 2 * (data['width'] + data['length'])
-        height = data['height']
-        config = COST_CONFIG['materials']['walls']['Каркасные']
-        wall_area = perimeter * height
-        return wall_area * config['price_per_m2']
-
+        height = data.get('height', 2.5)
+        return perimeter * height * COST_CONFIG['materials']['walls']['Каркасные']
+    
     @staticmethod
     def calculate_roof(data):
-        style = data.get('house_style')
-        if style in ['A-frame', 'BARNHOUSE']:
-            roof_type = 'Фальцевая кровля'
-        else:
-            roof_type = data['roof_type']
-            
-        config = COST_CONFIG['materials']['roof'][roof_type]
+        roof_type = data.get('roof_type', 'Фальцевая кровля')
         width = data['width']
         length = data['length']
+        style = data.get('house_style', 'Скандинавский стиль')
         
         if style == 'Скандинавский стиль':
             slope = 25 if data['floors'] == 'Одноэтажный' else 35
         else:
-            slope = 45  # Для A-frame и BARNHOUSE
+            slope = 45
             
         roof_length = math.sqrt((width/2)**2 + (width/2 * math.tan(math.radians(slope)))**2)
-        roof_area = 2 * roof_length * length * config['slope_factor']
-        return roof_area * config['price_per_m2']
-
+        roof_area = 2 * roof_length * length * COST_CONFIG['materials']['roof'][roof_type]
+        return roof_area
+    
     @staticmethod
     def calculate_insulation(data):
         insulation_type = data['insulation_type']
         config = COST_CONFIG['materials']['insulation'][insulation_type]
         perimeter = 2 * (data['width'] + data['length'])
-        height = data['height']
+        height = data.get('height', 2.5)
         
-        wall_area = perimeter * height
-        volume_walls = wall_area * config['density'] / 1000
-        cost_walls = volume_walls * config['price_per_m3']
+        wall_volume = perimeter * height * config['density'] / 1000
+        roof_area = DimensionCalculator.calculate_roof(data) / COST_CONFIG['materials']['roof'][data.get('roof_type', 'Фальцевая кровля')]
+        roof_volume = roof_area * config['density'] / 1000
         
-        roof_area = DimensionCalculator.calculate_roof(data) / COST_CONFIG['materials']['roof'][data.get('roof_type', 'Фальцевая кровля')]['price_per_m2']
-        volume_roof = roof_area * config['density'] / 1000
-        cost_roof = volume_roof * config['price_per_m3']
-        
-        return cost_walls + cost_roof
-
+        return (wall_volume + roof_volume) * config['price']
+    
     @staticmethod
     def calculate_windows(data):
-        style = data.get('house_style')
-        if style in ['A-frame', 'BARNHOUSE']:
-            # Одно большое окно во всю ширину и высоту
-            width = data['width']
-            height = data['height']
-            area = width * height
-            count = 1
-        else:
-            count = data['window_count']
-            area = count * COST_CONFIG['materials']['windows']['avg_area']
-            
-        return (count * COST_CONFIG['materials']['windows']['price_per_unit']) + (area * 500)  # Доп.стоимость за площадь
-
+        count = data.get('window_count', 1)
+        return count * COST_CONFIG['materials']['windows']
+    
     @staticmethod
     def calculate_doors(data):
-        entrance = data['entrance_doors']
-        interior = data['interior_doors']
-        return (entrance * COST_CONFIG['materials']['doors']['входная']['price']) + (interior * COST_CONFIG['materials']['doors']['межкомнатная']['price'])
-
+        entrance = data.get('entrance_doors', 1)
+        interior = data.get('interior_doors', 0)
+        return (entrance * COST_CONFIG['materials']['doors']['входная']) + (interior * COST_CONFIG['materials']['doors']['межкомнатная'])
+    
     @staticmethod
     def calculate_works(data):
-        work_cost = 0
         perimeter = 2 * (data['width'] + data['length'])
-        height = data['height']
+        height = data.get('height', 2.5)
         
-        # Земляные работы
-        work_cost += perimeter * 0.5 * 1.2 * COST_CONFIG['work']['excavation']['price_per_m3']
-        # Столярные работы
-        work_cost += perimeter * height * COST_CONFIG['work']['carpentry']['price_per_m2']
-        return work_cost
+        excavation_cost = perimeter * 0.5 * 1.2 * COST_CONFIG['work']['excavation']
+        carpentry_cost = perimeter * height * COST_CONFIG['work']['carpentry']
+        roof_cost = DimensionCalculator.calculate_roof(data) * COST_CONFIG['work']['roof_installation'] / 1000  # Цена за м²
+        
+        return excavation_cost + carpentry_cost + roof_cost
 
 class CostCalculator:
     @staticmethod
@@ -461,11 +483,11 @@ class CostCalculator:
         total = 0
         details = []
         
-        # Фундамент (автоматически свайно-винтовой)
+        # Фундамент
         foundation = DimensionCalculator.calculate_foundation(data)
         details.append(f"{EMOJI_MAP['foundation']} Фундамент: {foundation:,.0f}{STYLES['currency']}")
         
-        # Стены (автоматически каркасные)
+        # Стены
         walls = DimensionCalculator.calculate_walls(data)
         details.append(f"🧱 Стены: {walls:,.0f}{STYLES['currency']}")
         
@@ -514,6 +536,7 @@ def calculate_and_send_result(user_id):
         total, details = CostCalculator.calculate_total(project['data'])
         send_result_message(user_id, total, details)
         schedule_reminder(user_id, project['name'])
+        track_event('complete')
     except Exception as e:
         logger.error(f"Ошибка расчета: {str(e)}")
         bot.send_message(user_id, f"{STYLES['error']} Ошибка расчета: {str(e)}")
@@ -587,6 +610,43 @@ def send_to_specialist(message):
         logger.error(f"Ошибка отправки: {str(e)}")
         bot.send_message(user_id, f"{STYLES['error']} Ошибка отправки: {str(e)}")
     show_main_menu(message)
+
+@bot.message_handler(func=lambda m: m.text == "📚 Гайды")
+def show_guides_menu(message):
+    user_id = message.chat.id
+    user = get_user_data(user_id)
+    user['last_active'] = datetime.now()
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    buttons = [g['title'] for g in GUIDES.values()]
+    markup.add(*buttons)
+    markup.add("🔙 Главное меню")
+    bot.send_message(
+        user_id,
+        f"{STYLES['header']} Выберите раздел гайда:",
+        reply_markup=markup
+    )
+
+@bot.message_handler(func=lambda m: m.text in [g['title'] for g in GUIDES.values()])
+def show_guide_content(message):
+    user_id = message.chat.id
+    user = get_user_data(user_id)
+    user['last_active'] = datetime.now()
+    guide_title = message.text
+    for key, guide in GUIDES.items():
+        if guide['title'] == guide_title:
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add("🔙 К списку гайдов")
+            bot.send_message(
+                user_id,
+                f"📖 <b>{guide['title']}</b>\n{guide['content']}",
+                parse_mode='HTML',
+                reply_markup=markup
+            )
+            break
+
+@bot.message_handler(func=lambda m: m.text == "🔙 К списку гайдов")
+def back_to_guides(message):
+    show_guides_menu(message)
 
 @bot.message_handler(func=lambda m: m.text == "🔙 Главное меню")
 def back_to_main_menu(message):
