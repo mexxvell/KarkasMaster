@@ -11,29 +11,24 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from io import BytesIO
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация Flask
 app = Flask(__name__)
 
 @app.route('/')
 def index():
     return "Telegram-бот работает!"
 
-# Конфигурация бота
 API_TOKEN = os.getenv('API_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
 
-# Планировщик задач
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# Глобальное хранилище данных
 user_data = {}
 analytics_data = {
     'started_calculations': 0,
@@ -382,14 +377,12 @@ def ask_next_question(user_id):
     project = user['projects'][user['current_project']]
     current_step = project['data'].get('step', 0)
     
-    # Установка значений по умолчанию в зависимости от стиля
     if project['data'].get('house_style') in ['A-frame', 'BARNHOUSE', 'ХОЗБЛОК']:
         project['data'].setdefault('floors', 'Одноэтажный')
         project['data'].setdefault('roof_type', 'Фальцевая кровля')
         project['data'].setdefault('window_count', 1)
         project['data'].setdefault('height', 3.0 if project['data']['house_style'] == 'A-frame' else 2.5)
     
-    # Пропуск шагов по условиям
     while current_step < TOTAL_STEPS:
         question = QUESTIONS[current_step]
         if 'condition' in question and not question['condition'](project['data']):
@@ -449,7 +442,6 @@ def process_answer(message, current_step):
             return ask_next_question(user_id)
         else:
             return show_main_menu(message)
-    
     if message.text == "❌ Отменить расчет":
         del user['projects'][user['current_project']]
         user['current_project'] = None
@@ -461,7 +453,6 @@ def process_answer(message, current_step):
         error = validate_input(answer, question, project['data'])
         if error:
             raise ValueError(error)
-        
         if answer == 'Пропустить':
             project['data'][question['key']] = None
         else:
@@ -473,10 +464,8 @@ def process_answer(message, current_step):
                 project['data'][question['key']] = int(answer)
             else:
                 project['data'][question['key']] = answer
-        
         project['data']['step'] = current_step + 1
         user['last_active'] = datetime.now()
-    
     except Exception as e:
         logger.error(f"Ошибка пользователя {user_id}: {str(e)}")
         bot.send_message(
@@ -502,6 +491,7 @@ class DimensionCalculator:
         foundation_type = data['foundation_type']
         perimeter = 2 * (data['width'] + data['length'])
         config = COST_CONFIG['materials']['foundation'][foundation_type]
+        
         if foundation_type == 'Свайно-винтовой':
             piles_count = math.ceil(perimeter / 1.5)
             return piles_count * config['price_per_pile']
@@ -522,10 +512,12 @@ class DimensionCalculator:
         config = COST_CONFIG['materials']['roof'][roof_type]
         width = data['width']
         length = data['length']
+        
         if style == 'Скандинавский стиль':
             slope = 25 if data['floors'] == 'Одноэтажный' else 35
         else:
             slope = 45
+        
         roof_length = (width / 2) / math.cos(math.radians(slope))
         roof_area = 2 * roof_length * length * config['slope_factor']
         material_cost = roof_area * config['price_per_m2']
@@ -537,16 +529,20 @@ class DimensionCalculator:
         perimeter = 2 * (data['width'] + data['length'])
         height = data.get('height', 2.5)
         wall_area = perimeter * height
+        
         frame_config = COST_CONFIG['materials']['wall_frame']['Каркас 50x150']
         frame_volume = wall_area * 0.15  # 150 мм толщина
         frame_cost = frame_volume * frame_config['price_per_m3']
+        
         insulation_type = data['wall_insulation_type']
         insulation_config = COST_CONFIG['materials']['wall_insulation'][insulation_type]
         insulation_thickness = data.get('wall_insulation_thickness', insulation_config['min_thickness']) / 1000
         insulation_volume = wall_area * insulation_thickness
         insulation_cost = insulation_volume * insulation_config['price_per_m3']
+        
         cladding_config = COST_CONFIG['materials']['wall_cladding'][data['exterior_type']]
         cladding_cost = wall_area * cladding_config['price_per_m2']
+        
         work_cost = wall_area * COST_CONFIG['work']['carpentry']['price_per_m2']
         return frame_cost + insulation_cost + cladding_cost + work_cost
 
@@ -571,35 +567,36 @@ class CostCalculator:
     def calculate_total(data):
         total = 0
         details = []
-        # Фундамент
+        
         foundation = DimensionCalculator.calculate_foundation(data)
         details.append(f"{EMOJI_MAP['foundation']} Фундамент: {foundation:,.0f}{STYLES['currency']}")
-        # Кровля
+        
         roof = DimensionCalculator.calculate_roof(data)
         details.append(f"{EMOJI_MAP['roof']} Кровля: {roof:,.0f}{STYLES['currency']}")
-        # Стены
+        
         walls = DimensionCalculator.calculate_walls(data)
         details.append(f"{EMOJI_MAP['wall_frame']} Каркас: {walls:,.0f}{STYLES['currency']}")
-        # Утепление
+        
         insulation = DimensionCalculator.calculate_insulation_work(data)
         details.append(f"{EMOJI_MAP['insulation']} Утепление: {insulation:,.0f}{STYLES['currency']}")
-        # Окна
+        
         windows = DimensionCalculator.calculate_windows(data)
         details.append(f"{EMOJI_MAP['windows']} Окна: {windows:,.0f}{STYLES['currency']}")
-        # Двери
+        
         doors = DimensionCalculator.calculate_doors(data)
         details.append(f"{EMOJI_MAP['doors']} Двери: {doors:,.0f}{STYLES['currency']}")
-        # Региональный коэффициент
+        
         region_coeff = REGIONAL_COEFFICIENTS.get(data.get('region', 'Другой'), 1.0)
         total = sum([foundation, roof, walls, insulation, windows, doors]) * region_coeff
         details.append(f"{EMOJI_MAP['region']} Региональный коэффициент: ×{region_coeff:.1f}")
-        # Скидки
+        
         if data.get('window_count', 0) > 5:
             total *= 0.95
             details.append("🎁 Скидка 5% за окна")
         if data['width'] * data['length'] > 80:
             total *= 0.97
             details.append("🎁 Скидка 3% за площадь")
+        
         return round(total), details
 
 def calculate_and_send_result(user_id):
@@ -609,12 +606,11 @@ def calculate_and_send_result(user_id):
         total, details = CostCalculator.calculate_total(project['data'])
         send_result_message(user_id, total, details)
         schedule_reminder(user_id, project['name'])
+        project['completed'] = True  # Помечаем проект как завершенный
     except Exception as e:
         logger.error(f"Ошибка расчета: {str(e)}")
         bot.send_message(user_id, f"{STYLES['error']} Ошибка расчета: {str(e)}")
         track_event('abandon', project['data'].get('step', 0))
-    finally:
-        user['current_project'] = None
 
 def send_result_message(user_id, total, details):
     formatted_details = []
@@ -626,15 +622,18 @@ def send_result_message(user_id, total, details):
             formatted_details.append(f"<b>{name_part}</b>: <code>{price_part}</code>")
         else:
             formatted_details.append(item)
+    
     result = [
         f"{STYLES['header']} 📊 Детализированный расчет стоимости:",
         *formatted_details,
         STYLES['separator'],
         f"💰 <b>Итоговая стоимость</b>: <code>{total:,.0f} руб.</code>"
     ]
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("📨 Отправить специалисту", "🖨️ Экспорт в PDF")
     markup.row("🔙 Главное меню")
+    
     bot.send_message(
         user_id,
         "\n".join(result),
@@ -642,62 +641,84 @@ def send_result_message(user_id, total, details):
         parse_mode='HTML'
     )
 
+# ИСПРАВЛЕНИЯ ДЛЯ PDF
 @bot.message_handler(func=lambda m: m.text == "🖨️ Экспорт в PDF")
 def export_to_pdf(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
-    project_id = user.get('current_project') or max(
-        user['projects'].keys(),
-        key=lambda k: user['projects'][k]['created_at'],
-        default=None
-    )
-    if not project_id:
-        bot.send_message(user_id, f"{STYLES['error']} Нет активных проектов")
+    
+    # Ищем последний завершенный проект
+    completed_projects = [
+        p for p in user['projects'].values() 
+        if p.get('completed', False)
+    ]
+    
+    if not completed_projects:
+        bot.send_message(user_id, f"{STYLES['error']} Нет завершенных проектов")
         return
-    project = user['projects'][project_id]
-    total, details = CostCalculator.calculate_total(project['data'])
-    # Генерация PDF
-    buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=letter)
-    pdf.setFont("DejaVuSerif", 12)
-    text = pdf.beginText(40, 750)
-    clean_details = [line.replace('<b>', '').replace('</b>', '').replace('<code>', '') for line in details]
-    text.setFont("Courier", 12)
-    text.textLine(f"Смета для проекта: {project['name']}")
-    text.textLine(f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
-    text.textLine("")
-    for line in details:
-        text.textLine(line.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', ''))
-    text.textLine(f"Итоговая стоимость: {total:,.0f} руб.")
-    pdf.drawText(text)
-    pdf.save()
-    buffer.seek(0)
-    bot.send_document(
-        user_id,
-        ('smeta.pdf', buffer),
-        caption=f"🖨️ Смета проекта {project['name']}",
-        reply_markup=create_main_menu()
+    
+    project = max(
+        completed_projects,
+        key=lambda p: p['created_at']
     )
+    
+    try:
+        total, details = CostCalculator.calculate_total(project['data'])
+        
+        # Генерация PDF
+        buffer = BytesIO()
+        pdf = canvas.Canvas(buffer, pagesize=letter)
+        pdf.setFont("Courier", 12)
+        text = pdf.beginText(40, 750)
+        
+        text.textLine(f"Смета для проекта: {project['name']}")
+        text.textLine(f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
+        text.textLine("")
+        
+        for line in details:
+            clean_line = line.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', '')
+            text.textLine(clean_line)
+        
+        text.textLine("")
+        text.textLine(f"Итоговая стоимость: {total:,.0f} руб.")
+        pdf.drawText(text)
+        pdf.save()
+        
+        buffer.seek(0)
+        bot.send_document(
+            user_id,
+            ('smeta.pdf', buffer),
+            caption=f"🖨️ Смета проекта {project['name']}",
+            reply_markup=create_main_menu()
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка генерации PDF: {str(e)}")
+        bot.send_message(user_id, f"{STYLES['error']} Ошибка генерации PDF: {str(e)}")
 
 @bot.message_handler(func=lambda m: m.text == "📨 Отправить специалисту")
 def send_to_specialist(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
-    project_id = user.get('current_project') or max(
-        user['projects'].keys(), 
-        key=lambda k: user['projects'][k]['created_at'], 
-        default=None
+    
+    completed_projects = [
+        p for p in user['projects'].values() 
+        if p.get('completed', False)
+    ]
+    
+    if not completed_projects:
+        bot.send_message(user_id, f"{STYLES['error']} Нет завершенных проектов")
+        return
+    
+    project = max(
+        completed_projects,
+        key=lambda p: p['created_at']
     )
-    if not project_id:
-        bot.send_message(user_id, f"{STYLES['error']} Нет активных проектов")
-        return
-    project = user['projects'].get(project_id)
-    if not project:
-        bot.send_message(user_id, f"{STYLES['error']} Проект не найден")
-        return
+    
     try:
         total, details = CostCalculator.calculate_total(project['data'])
         formatted_details = "\n".join(details).replace(STYLES['currency'], 'руб.')
+        
         result = [
             f"Новый запрос от @{message.from_user.username}",
             f"Проект: {project['name']}",
@@ -705,14 +726,17 @@ def send_to_specialist(message):
             f"Площадь: {project['data']['width']}x{project['data']['length']} м",
             f"Стиль: {project['data'].get('house_style', 'Не указан')}",
             "Детали:",
-            *details,
+            formatted_details,
             f"Итоговая стоимость: {total:,.0f} руб."
         ]
+        
         bot.send_message(515650034, "\n".join(result))
         bot.send_message(user_id, f"{STYLES['success']} Запрос отправлен специалисту!")
+    
     except Exception as e:
         logger.error(f"Ошибка отправки: {str(e)}")
         bot.send_message(user_id, f"{STYLES['error']} Ошибка отправки: {str(e)}")
+    
     show_main_menu(message)
 
 @bot.message_handler(func=lambda m: m.text == "📚 Гайды")
@@ -720,10 +744,12 @@ def show_guides_menu(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     buttons = [g['title'] for g in GUIDES.values()]
     markup.add(*buttons)
     markup.add("🔙 Главное меню")
+    
     bot.send_message(
         user_id,
         f"{STYLES['header']} Выберите раздел гайда:",
@@ -735,11 +761,13 @@ def show_guide_content(message):
     user_id = message.chat.id
     user = get_user_data(user_id)
     user['last_active'] = datetime.now()
+    
     guide_title = message.text
     for key, guide in GUIDES.items():
         if guide['title'] == guide_title:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add("🔙 К списку гайдов")
+            
             bot.send_message(
                 user_id,
                 f"📖 <b>{guide['title']}</b>\n{guide['content']}",
@@ -759,7 +787,6 @@ def back_to_main_menu(message):
     user['current_project'] = None
     show_main_menu(message)
 
-# Обработчик вебхуков
 @app.route(f'/{API_TOKEN}', methods=['POST'])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
@@ -780,8 +807,10 @@ if __name__ == '__main__':
     import threading
     ping_thread = threading.Thread(target=self_ping, daemon=True)
     ping_thread.start()
+    
     webhook_url = f"https://karkasmaster.onrender.com/{API_TOKEN}"
     bot.remove_webhook()
     bot.set_webhook(url=webhook_url)
+    
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
