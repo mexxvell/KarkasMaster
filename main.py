@@ -1,12 +1,9 @@
 import os
 import logging
-import threading
-import math
 from datetime import datetime
-from flask import Flask
+from flask import Flask, request
 import telebot
 from telebot import types
-import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Настройка логирования
@@ -18,9 +15,6 @@ logger = logging.getLogger(__name__)
 
 # Инициализация Flask
 app = Flask(__name__)
-@app.route('/')
-def index():
-    return "Telegram-бот работает!"
 
 # Конфигурация бота
 API_TOKEN = os.getenv('API_TOKEN')
@@ -62,9 +56,9 @@ EMOJI_MAP = {
 COST_CONFIG = {
     'materials': {
         'foundation': {
-            'Свайно-винтовой': {'price_per_pile': 2500, 'pile_distance': 2},
-            'Ленточный': {'price_per_m3': 8000},
-            'Плитный': {'price_per_m2': 2500}
+            'Свайно-винтовой': 15000,
+            'Ленточный': 20000,
+            'Плитный': 25000
         },
         'roof': {
             'Металлочерепица': 1200,
@@ -73,9 +67,9 @@ COST_CONFIG = {
             'Пропустить': 0
         },
         'insulation': {
-            'Минеральная вата': {'price_per_m3': 5000},
-            'Эковата': {'price_per_m3': 4000},
-            'Пенополистирол': {'price_per_m3': 6000},
+            'Минеральная вата': {'price': 500, 'min_thickness': 150},
+            'Эковата': {'price': 400, 'min_thickness': 200},
+            'Пенополистирол': {'price': 600, 'min_thickness': 100},
             'Пропустить': 0
         },
         'exterior': {
@@ -98,7 +92,7 @@ COST_CONFIG = {
     },
     'work': {
         'base': {
-            'price_per_m2': 8000,
+            'price': 8000,
             'floor_multiplier': {
                 'Одноэтажный': 1.0,
                 'Двухэтажный': 0.9,
@@ -111,9 +105,9 @@ COST_CONFIG = {
 }
 
 REGIONAL_COEFFICIENTS = {
-    'Калужская обл': {'base': 1.0, 'delivery': 1.05},
-    'Московская обл': {'base': 1.2, 'delivery': 1.1},
-    'Другой': {'base': 1.5, 'delivery': 1.3}
+    'Калужская обл': 1,
+    'Московская обл': 1.2,
+    'Другой': 1.5
 }
 
 QUESTIONS = [
@@ -124,21 +118,10 @@ QUESTIONS = [
         'row_width': 2
     },
     {
-        'text': '📐 Длина дома (м):',
-        'key': 'length',
-        'options': ['7', '10', '12', 'Пропустить'],
-        'row_width': 3
-    },
-    {
-        'text': '📏 Ширина дома (м):',
-        'key': 'width',
-        'options': ['14', '10', '8', 'Пропустить'],
-        'row_width': 3
-    },
-    {
-        'text': 'Высота этажа (м):',
-        'key': 'height',
-        'options': ['2.5', '3.0', 'Пропустить'],
+        'text': '🏡 Площадь дома (кв.м):',
+        'options': ['100', '120', '150', 'Пропустить'],
+        'key': 'area',
+        'max': 1000,
         'row_width': 2
     },
     {
@@ -366,9 +349,11 @@ def ask_next_question(user_id):
 def validate_input(answer, question):
     if answer not in question['options'] and answer != 'Пропустить':
         return f"Выберите вариант из списка: {', '.join(question['options'])}"
-    if question['key'] in ['length', 'width', 'height', 'terrace_area']:
+    if question['key'] in ['area', 'terrace_area']:
         try:
             value = float(answer.replace(',', '.'))
+            if 'max' in question and value > question['max']:
+                return f"Максимальное значение: {question['max']} кв.м"
             if value < 0:
                 return "Значение не может быть отрицательным"
         except ValueError:
@@ -400,7 +385,7 @@ def process_answer(message, current_step):
         else:
             if question['key'] in ['windows_count', 'entrance_doors', 'inner_doors']:
                 project['data'][question['key']] = int(answer)
-            elif question['key'] in ['length', 'width', 'height', 'terrace_area']:
+            elif question['key'] in ['area', 'terrace_area']:
                 project['data'][question['key']] = float(answer.replace(',', '.'))
             else:
                 project['data'][question['key']] = answer
@@ -427,216 +412,109 @@ class CostCalculator:
     def calculate_total(data):
         total = 0
         details = []
-        
-        # Основные работы
-        base_work = CostCalculator._calculate_base_works(data)
-        total += base_work['total']
-        details.extend(base_work['details'])
-        
-        # Фундамент
-        foundation_cost = CostCalculator._calculate_foundation_cost(data)
-        total += foundation_cost['total']
-        details.extend(foundation_cost['details'])
-        
-        # Кровля
-        roof_cost = CostCalculator._calculate_roof_cost(data)
-        total += roof_cost['total']
-        details.extend(roof_cost['details'])
-        
-        # Утепление
-        insulation_cost = CostCalculator._calculate_insulation_cost(data)
-        total += insulation_cost['total']
-        details.extend(insulation_cost['details'])
-        
-        # Отделка
-        exterior_cost = CostCalculator._calculate_exterior_cost(data)
-        total += exterior_cost['total']
-        details.extend(exterior_cost['details'])
-        
-        interior_cost = CostCalculator._calculate_interior_cost(data)
-        total += interior_cost['total']
-        details.extend(interior_cost['details'])
-        
-        # Окна и двери
-        openings_cost = CostCalculator._calculate_openings_cost(data)
-        total += openings_cost['total']
-        details.extend(openings_cost['details'])
-        
-        # Терраса
-        terrace_cost = CostCalculator._calculate_terrace_cost(data)
-        total += terrace_cost['total']
-        details.extend(terrace_cost['details'])
-        
-        # Применение коэффициентов
+        base_cost = CostCalculator._calculate_base_works(data)
+        total += base_cost['total']
+        details.extend(base_cost['details'])
+        materials_cost = CostCalculator._calculate_materials(data)
+        total += materials_cost['total']
+        details.extend(materials_cost['details'])
+        additional_cost = CostCalculator._calculate_additional(data)
+        total += additional_cost['total']
+        details.extend(additional_cost['details'])
         total = CostCalculator._apply_coefficients(data, total, details)
-        
-        return round(total), details
+        return round(total, 2), details
 
     @staticmethod
     def _calculate_base_works(data):
         total = 0
         details = []
-        floors = data.get('floors', 'Одноэтажный')
-        length = data.get('length', 7)
-        width = data.get('width', 14)
-        height = data.get('height', 2.5)
-        area = length * width
-        
-        multiplier = COST_CONFIG['work']['base']['floor_multiplier'][floors]
-        cost = area * height * COST_CONFIG['work']['base']['price_per_m2'] * multiplier
+        floor_type = data.get('floors', 'Одноэтажный')
+        area = float(data.get('area', 100))
+        base_config = COST_CONFIG['work']['base']
+        cost = area * base_config['price'] * base_config['floor_multiplier'][floor_type]
         total += cost
-        details.append(f"🔹 Основные работы ({floors}): {cost:,.0f}{STYLES['currency']}")
+        details.append(f"{EMOJI_MAP['foundation']} <b>Основные работы ({floor_type})</b>: {cost:,.0f}{STYLES['currency']}")
         return {'total': total, 'details': details}
 
     @staticmethod
-    def _calculate_foundation_cost(data):
+    def _calculate_materials(data):
         total = 0
         details = []
-        foundation_type = data.get('foundation')
-        if not foundation_type or foundation_type == 'Пропустить':
-            return {'total': 0, 'details': []}
-        
-        config = COST_CONFIG['materials']['foundation'][foundation_type]
-        length = data.get('length', 7)
-        width = data.get('width', 14)
-        perimeter = 2 * (length + width)
-        
-        if foundation_type == 'Свайно-винтовой':
-            num_piles = perimeter / config['pile_distance']
-            cost = num_piles * config['price_per_pile']
-            details.append(f"مصالح Свайный фундамент: {num_piles:.0f} свай")
-        elif foundation_type == 'Ленточный':
-            volume = perimeter * 0.4 * 0.6  # Ширина 0.4м, высота 0.6м
-            cost = volume * config['price_per_m3']
-            details.append(f"مصالح Ленточный фундамент: {volume:.2f} м³")
-        elif foundation_type == 'Плитный':
-            area = length * width
-            cost = area * config['price_per_m2']
-            details.append(f"愍 Плитный фундамент: {area:.2f} м²")
-            
-        total += cost
+        area = float(data.get('area', 100))
+        foundation = data.get('foundation')
+        if foundation and foundation != 'Пропустить':
+            cost = COST_CONFIG['materials']['foundation'][foundation]
+            total += cost
+            details.append(f"{EMOJI_MAP['foundation']} Фундамент ({foundation}): {cost:,.0f}{STYLES['currency']}")
+        roof = data.get('roof')
+        if roof and roof != 'Пропустить':
+            roof_area = CostCalculator._calculate_roof_area(data)
+            cost = roof_area * COST_CONFIG['materials']['roof'][roof]
+            total += cost
+            details.append(f"{EMOJI_MAP['roof']} Кровля ({roof}): {cost:,.0f}{STYLES['currency']}")
+        insulation = data.get('insulation')
+        if insulation and insulation != 'Пропустить':
+            thickness = float(data.get('insulation_thickness', 150))
+            material = COST_CONFIG['materials']['insulation'][insulation]
+            cost = (thickness / 1000) * area * material['price']  # Исправлено деление на 1000
+            total += cost
+            details.append(f"{EMOJI_MAP['insulation']} Утеплитель ({insulation} {thickness}мм): {cost:,.0f}{STYLES['currency']}")
+        for category in ['exterior', 'interior']:
+            material = data.get(category)
+            if material and material != 'Пропустить':
+                cost = area * COST_CONFIG['materials'][category][material]
+                total += cost
+                details.append(f"{EMOJI_MAP[category]} {'Внешняя' if category == 'exterior' else 'Внутренняя'} отделка ({material}): {cost:,.0f}{STYLES['currency']}")
         return {'total': total, 'details': details}
 
     @staticmethod
-    def _calculate_roof_cost(data):
+    def _calculate_additional(data):
         total = 0
         details = []
-        roof_type = data.get('roof')
-        if not roof_type or roof_type == 'Пропустить':
-            return {'total': 0, 'details': []}
-        
-        length = data.get('length', 7)
-        width = data.get('width', 14)
-        roof_area = 2 * (length * math.sqrt((width/2)**2 + (3)**2))  # Для двускатной
-        
-        cost = roof_area * COST_CONFIG['materials']['roof'][roof_type]
+        windows = int(data.get('windows_count', 0))
+        entrance_doors = int(data.get('entrance_doors', 0))
+        inner_doors = int(data.get('inner_doors', 0))
+        cost = (
+            windows * COST_CONFIG['materials']['windows'] +
+            entrance_doors * COST_CONFIG['materials']['doors']['входная'] +
+            inner_doors * COST_CONFIG['materials']['doors']['межкомнатная']
+        )
         total += cost
-        details.append(f"🏛️ Кровля ({roof_type}): {roof_area:.1f} м²")
-        return {'total': total, 'details': details}
-
-    @staticmethod
-    def _calculate_insulation_cost(data):
-        total = 0
-        details = []
-        insulation_type = data.get('insulation')
-        if not insulation_type or insulation_type == 'Пропустить':
-            return {'total': 0, 'details': []}
-        
-        thickness = data.get('insulation_thickness', 150) / 1000
-        length = data.get('length', 7)
-        width = data.get('width', 14)
-        height = data.get('height', 2.5)
-        
-        wall_area = 2 * (length + width) * height
-        roof_area = 2 * (length * math.sqrt((width/2)**2 + (3)**2))
-        floor_area = length * width
-        
-        volume = (wall_area + roof_area + floor_area) * thickness
-        cost = volume * COST_CONFIG['materials']['insulation'][insulation_type]['price_per_m3']
-        total += cost
-        details.append(f"❄️ Утепление ({insulation_type}): {volume:.2f} м³")
-        return {'total': total, 'details': details}
-
-    @staticmethod
-    def _calculate_exterior_cost(data):
-        total = 0
-        details = []
-        exterior = data.get('exterior')
-        if not exterior or exterior == 'Пропустить':
-            return {'total': 0, 'details': []}
-        
-        length = data.get('length', 7)
-        width = data.get('height', 14)
-        height = data.get('height', 2.5)
-        wall_area = 2 * (length + width) * height
-        
-        cost = wall_area * COST_CONFIG['materials']['exterior'][exterior]
-        total += cost
-        details.append(f"🎨 Внешняя отделка ({exterior}): {wall_area:.1f} м²")
-        return {'total': total, 'details': details}
-
-    @staticmethod
-    def _calculate_interior_cost(data):
-        total = 0
-        details = []
-        interior = data.get('interior')
-        if not interior or interior == 'Пропустить':
-            return {'total': 0, 'details': []}
-        
-        length = data.get('length', 7)
-        width = data.get('width', 14)
-        height = data.get('height', 2.5)
-        wall_area = 2 * (length + width) * height
-        
-        cost = wall_area * COST_CONFIG['materials']['interior'][interior]
-        total += cost
-        details.append(f"🛋️ Внутренняя отделка ({interior}): {wall_area:.1f} м²")
-        return {'total': total, 'details': details}
-
-    @staticmethod
-    def _calculate_openings_cost(data):
-        total = 0
-        details = []
-        windows = data.get('windows_count', 0)
-        entrance = data.get('entrance_doors', 0)
-        inner = data.get('inner_doors', 0)
-        
-        window_cost = windows * COST_CONFIG['materials']['windows']
-        entrance_cost = entrance * COST_CONFIG['materials']['doors']['входная']
-        inner_cost = inner * COST_CONFIG['materials']['doors']['межкомнатная']
-        
-        total += window_cost + entrance_cost + inner_cost
-        details.append(f"🪟 Окна: {windows} шт.")
-        details.append(f"🚪 Входные двери: {entrance} шт.")
-        details.append(f"🚪 Межкомнатные двери: {inner} шт.")
-        return {'total': total, 'details': details}
-
-    @staticmethod
-    def _calculate_terrace_cost(data):
-        total = 0
-        details = []
-        terrace = data.get('terrace_area', 0)
-        if terrace <= 0:
-            return {'total': 0, 'details': []}
-        
-        cost = terrace * COST_CONFIG['work']['terrace']
-        total += cost
-        details.append(f"🌳 Терраса: {terrace} м²")
+        details.append(f"{EMOJI_MAP['windows']} Окна: {windows} шт. - {windows*COST_CONFIG['materials']['windows']:,.0f}{STYLES['currency']}")
+        details.append(f"{EMOJI_MAP['doors']} Входные двери: {entrance_doors} шт. - {entrance_doors*COST_CONFIG['materials']['doors']['входная']:,.0f}{STYLES['currency']}")
+        details.append(f"{EMOJI_MAP['doors']} Межкомнатные двери: {inner_doors} шт. - {inner_doors*COST_CONFIG['materials']['doors']['межкомнатная']:,.0f}{STYLES['currency']}")
+        terrace_area = float(data.get('terrace_area', 0))
+        if terrace_area > 0:
+            cost = terrace_area * COST_CONFIG['work']['terrace']
+            total += cost
+            details.append(f"{EMOJI_MAP['terrace']} Терраса ({terrace_area} м²): {cost:,.0f}{STYLES['currency']}")
         return {'total': total, 'details': details}
 
     @staticmethod
     def _apply_coefficients(data, total, details):
         region = data.get('region', 'Другой')
-        coeff = REGIONAL_COEFFICIENTS.get(region, {'base': 1.0, 'delivery': 1.0})
-        
-        total *= coeff['base']
-        details.append(f"📍 Региональный коэффициент ({region}): ×{coeff['base']:.1f}")
-        
-        if total > 500000:
-            details.append("🎁 Скидка за крупный заказ: 5%")
+        region_coeff = REGIONAL_COEFFICIENTS.get(region, 1.0)
+        total *= region_coeff
+        details.append(f"{EMOJI_MAP['region']} Региональный коэффициент ({region}): ×{region_coeff}")
+        selected_items = sum(1 for k in data if data.get(k) and k not in ['area', 'floors', 'region'])
+        if selected_items > 5:
+            total *= 0.9
+            details.append(f"🎁 Скидка за комплексный заказ: 10%")
+        area = float(data.get('area', 100))
+        if area > 200:
             total *= 0.95
-        
+            details.append(f"🎁 Скидка за большую площадь: 5%")
         return total
+
+    @staticmethod
+    def _calculate_roof_area(data):
+        area = float(data.get('area', 100))
+        floors = data.get('floors', 'Одноэтажный')
+        if floors == 'Двухэтажный':
+            return area * 0.6
+        elif floors == 'С мансардой':
+            return area * 1.1
+        return area * 0.8
 
 def calculate_and_send_result(user_id):
     try:
@@ -764,25 +642,19 @@ def back_to_main_menu(message):
     user['current_project'] = None
     show_main_menu(message)
 
-def self_ping():
-    while True:
-        try:
-            requests.get("https://karkasmaster.onrender.com")
-            logger.info("Self-ping успешен")
-        except Exception as e:
-            logger.error(f"Ошибка self-ping: {str(e)}")
-        threading.Event().wait(300)
+# Обработчик вебхуков
+@app.route(f'/{API_TOKEN}', methods=['POST'])
+def webhook():
+    update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
+    bot.process_new_updates([update])
+    return '', 200
 
 if __name__ == '__main__':
-    # Удаляем старые вебхуки
+    # Настройка вебхука
+    webhook_url = f"https://karkasmaster.onrender.com/{API_TOKEN}"
     bot.remove_webhook()
-    # Запускаем бота в основном потоке
-    bot_thread = threading.Thread(target=bot.polling, kwargs={
-        'none_stop': True,
-        'interval': 0,
-        'timeout': 20
-    })
-    bot_thread.daemon = True
-    bot_thread.start()
+    bot.set_webhook(url=webhook_url)
+    
+    # Запуск Flask
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
