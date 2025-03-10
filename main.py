@@ -18,10 +18,6 @@ logger = logging.getLogger(__name__)
 # Инициализация Flask
 app = Flask(__name__)
 
-@app.route('/')
-def index():
-    return "Telegram-бот работает!"
-    
 # Конфигурация бота
 API_TOKEN = os.getenv('API_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
@@ -439,7 +435,7 @@ class CostCalculator:
         base_config = COST_CONFIG['work']['base']
         cost = area * base_config['price'] * base_config['floor_multiplier'][floor_type]
         total += cost
-        details.append(f"Основные работы ({floor_type}): {cost:,.0f}{STYLES['currency']}")
+        details.append(f"{EMOJI_MAP['foundation']} <b>Основные работы ({floor_type})</b>: {cost:,.0f}{STYLES['currency']}")
         return {'total': total, 'details': details}
 
     @staticmethod
@@ -451,26 +447,26 @@ class CostCalculator:
         if foundation and foundation != 'Пропустить':
             cost = COST_CONFIG['materials']['foundation'][foundation]
             total += cost
-            details.append(f"Фундамент ({foundation}): {cost:,.0f}{STYLES['currency']}")
+            details.append(f"{EMOJI_MAP['foundation']} Фундамент ({foundation}): {cost:,.0f}{STYLES['currency']}")
         roof = data.get('roof')
         if roof and roof != 'Пропустить':
             roof_area = CostCalculator._calculate_roof_area(data)
             cost = roof_area * COST_CONFIG['materials']['roof'][roof]
             total += cost
-            details.append(f"Кровля ({roof}): {cost:,.0f}{STYLES['currency']}")
+            details.append(f"{EMOJI_MAP['roof']} Кровля ({roof}): {cost:,.0f}{STYLES['currency']}")
         insulation = data.get('insulation')
         if insulation and insulation != 'Пропустить':
             thickness = float(data.get('insulation_thickness', 150))
             material = COST_CONFIG['materials']['insulation'][insulation]
             cost = (thickness / 100) * area * material['price']
             total += cost
-            details.append(f"Утеплитель ({insulation} {thickness}мм): {cost:,.0f}{STYLES['currency']}")
+            details.append(f"{EMOJI_MAP['insulation']} Утеплитель ({insulation} {thickness}мм): {cost:,.0f}{STYLES['currency']}")
         for category in ['exterior', 'interior']:
             material = data.get(category)
             if material and material != 'Пропустить':
                 cost = area * COST_CONFIG['materials'][category][material]
                 total += cost
-                details.append(f"{'Внешняя' if category == 'exterior' else 'Внутренняя'} отделка ({material}): {cost:,.0f}{STYLES['currency']}")
+                details.append(f"{EMOJI_MAP[category]} {'Внешняя' if category == 'exterior' else 'Внутренняя'} отделка ({material}): {cost:,.0f}{STYLES['currency']}")
         return {'total': total, 'details': details}
 
     @staticmethod
@@ -486,12 +482,14 @@ class CostCalculator:
             inner_doors * COST_CONFIG['materials']['doors']['межкомнатная']
         )
         total += cost
-        details.append(f"Окна/двери: {cost:,.0f}{STYLES['currency']}")
+        details.append(f"{EMOJI_MAP['windows']} Окна: {windows} шт. - {windows*COST_CONFIG['materials']['windows']:,.0f}{STYLES['currency']}")
+        details.append(f"{EMOJI_MAP['doors']} Входные двери: {entrance_doors} шт. - {entrance_doors*COST_CONFIG['materials']['doors']['входная']:,.0f}{STYLES['currency']}")
+        details.append(f"{EMOJI_MAP['doors']} Межкомнатные двери: {inner_doors} шт. - {inner_doors*COST_CONFIG['materials']['doors']['межкомнатная']:,.0f}{STYLES['currency']}")
         terrace_area = float(data.get('terrace_area', 0))
         if terrace_area > 0:
             cost = terrace_area * COST_CONFIG['work']['terrace']
             total += cost
-            details.append(f"Терраса: {cost:,.0f}{STYLES['currency']}")
+            details.append(f"{EMOJI_MAP['terrace']} Терраса ({terrace_area} м²): {cost:,.0f}{STYLES['currency']}")
         return {'total': total, 'details': details}
 
     @staticmethod
@@ -499,15 +497,15 @@ class CostCalculator:
         region = data.get('region', 'Другой')
         region_coeff = REGIONAL_COEFFICIENTS.get(region, 1.0)
         total *= region_coeff
-        details.append(f"Региональный коэффициент ({region}): x{region_coeff}")
+        details.append(f"{EMOJI_MAP['region']} Региональный коэффициент ({region}): ×{region_coeff}")
         selected_items = sum(1 for k in data if data.get(k) and k not in ['area', 'floors', 'region'])
         if selected_items > 5:
             total *= 0.9
-            details.append("Скидка за комплексный заказ: 10%")
+            details.append(f"🎁 Скидка за комплексный заказ: 10%")
         area = float(data.get('area', 100))
         if area > 200:
             total *= 0.95
-            details.append("Скидка за большую площадь: 5%")
+            details.append(f"🎁 Скидка за большую площадь: 5%")
         return total
 
     @staticmethod
@@ -536,15 +534,27 @@ def calculate_and_send_result(user_id):
         user['current_project'] = None
 
 def send_result_message(user_id, total, details):
+    formatted_details = []
+    for item in details:
+        parts = item.split(':')
+        if len(parts) > 1:
+            name_part = parts[0].strip()
+            price_part = parts[1].strip()
+            formatted_details.append(f"<b>{name_part}</b>: <code>{price_part}</code>")
+        else:
+            formatted_details.append(item)
+            
     result = [
-        f"{STYLES['header']} Детализированный расчет стоимости:",
-        *details,
+        f"{STYLES['header']} 📊 Детализированный расчет стоимости:",
+        *formatted_details,
         STYLES['separator'],
-        f"💰 Примерная стоимость: {total:,.0f} руб."
+        f"💰 <b>Итоговая стоимость</b>: <code>{total:,.0f} руб.</code>"
     ]
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("📨 Отправить специалисту")
     markup.row("🔙 Главное меню")
+    
     bot.send_message(
         user_id,
         "\n".join(result),
@@ -570,14 +580,23 @@ def send_to_specialist(message):
         return
     try:
         total, details = CostCalculator.calculate_total(project['data'])
+        formatted_details = []
+        for item in details:
+            parts = item.split(':')
+            if len(parts) > 1:
+                name_part = parts[0].strip()
+                price_part = parts[1].strip()
+                formatted_details.append(f"<b>{name_part}</b>: <code>{price_part}</code>")
+            else:
+                formatted_details.append(item)
         result = [
             f"{STYLES['header']} Новый запрос от @{message.from_user.username}",
             "📊 Детали расчета:",
-            *details,
+            *formatted_details,
             STYLES['separator'],
-            f"💰 Примерная стоимость: {total:,.0f} руб."
+            f"💰 <b>Итоговая стоимость</b>: <code>{total:,.0f} руб.</code>"
         ]
-        bot.send_message(515650034, "\n".join(result))
+        bot.send_message(515650034, "\n".join(result), parse_mode='HTML')
         bot.send_message(user_id, f"{STYLES['success']} Запрос отправлен специалисту!")
     except Exception as e:
         logger.error(f"Ошибка отправки: {str(e)}")
