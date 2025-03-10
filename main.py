@@ -6,7 +6,6 @@ from flask import Flask, request
 import telebot
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
-import math
 
 # Настройка логирования
 logging.basicConfig(
@@ -207,141 +206,61 @@ QUESTIONS = [
 
 TOTAL_STEPS = len(QUESTIONS)
 
-class DimensionCalculator:
-    @staticmethod
-    def calculate_foundation(data):
-        foundation_type = data['foundation_type']
-        perimeter = 2 * (data['width'] + data['length'])
-        config = COST_CONFIG['materials']['foundation'][foundation_type]
-        
-        if foundation_type == 'Свайно-винтовой':
-            piles_count = math.ceil(perimeter / 1.5)  # Расстояние между сваями 1.5м
-            return piles_count * config['price_per_pile']
-            
-        elif foundation_type == 'Ленточный':
-            depth = 0.8  # Глубина ленты
-            width = 0.4   # Ширина ленты
-            volume = perimeter * depth * width
-            return volume * config['price_per_m3']
-            
-        elif foundation_type == 'Плитный':
-            area = data['width'] * data['length']
-            return area * config['price_per_m2']
-            
-        return 0
-
-    @staticmethod
-    def calculate_walls(data):
-        wall_type = data['wall_type']
-        config = COST_CONFIG['materials']['walls'][wall_type]
-        perimeter = 2 * (data['width'] + data['length'])
-        height = data['height']
-        
-        if wall_type == 'Каркасные':
-            wall_area = perimeter * height
-            return wall_area * config['price_per_m2']
-            
-        elif wall_type == 'Брусовые':
-            thickness = config['thickness']
-            volume = perimeter * height * thickness
-            return volume * config['price_per_m3']
-            
-        return 0
-
-    @staticmethod
-    def calculate_roof(data):
-        roof_type = data['roof_type']
-        config = COST_CONFIG['materials']['roof'][roof_type]
-        perimeter = 2 * (data['width'] + data['length'])
-        width = data['width']
-        length = data['length']
-        
-        # Расчет площади крыши с учетом уклона
-        if data['floors'] == 'Одноэтажный':
-            slope = 25  # Уклон 25 градусов
-        else:
-            slope = 35  # Уклон 35 градусов для мансард
-            
-        roof_length = math.sqrt((width/2)**2 + (width/2 * math.tan(math.radians(slope)))**2)
-        roof_area = 2 * roof_length * length * config['slope_factor']
-        
-        return roof_area * config['price_per_m2']
-
-    @staticmethod
-    def calculate_insulation(data):
-        insulation_type = data['insulation_type']
-        config = COST_CONFIG['materials']['insulation'][insulation_type]
-        perimeter = 2 * (data['width'] + data['length'])
-        height = data['height']
-        wall_area = perimeter * height
-        
-        # Утепление стен
-        volume_walls = wall_area * config['density'] / 1000  # Перевод мм в м
-        cost_walls = volume_walls * config['price_per_m3']
-        
-        # Утепление крыши
-        roof_area = DimensionCalculator.calculate_roof(data) / COST_CONFIG['materials']['roof'][data['roof_type']]['price_per_m2']
-        volume_roof = roof_area * config['density'] / 1000
-        cost_roof = volume_roof * config['price_per_m3']
-        
-        return cost_walls + cost_roof
-
-    @staticmethod
-    def calculate_windows(data):
-        count = data['window_count']
-        config = COST_CONFIG['materials']['windows']
-        return count * config['price_per_unit']
-
-    @staticmethod
-    def calculate_doors(data):
-        entrance = data['entrance_doors']
-        interior = data['interior_doors']
-        config = COST_CONFIG['materials']['doors']
-        return (entrance * config['входная']['price']) + (interior * config['межкомнатная']['price'])
-
-    @staticmethod
-    def calculate_works(data):
-        work_cost = 0
-        perimeter = 2 * (data['width'] + data['length'])
-        height = data['height']
-        
-        # Земляные работы
-        work_cost += perimeter * 0.5 * 1.2 * COST_CONFIG['work']['excavation']['price_per_m3']
-        
-        # Столярные работы
-        work_cost += perimeter * height * COST_CONFIG['work']['carpentry']['price_per_m2']
-        
-        return work_cost
-
-class CostCalculator:
-    @staticmethod
-    def calculate_total(data):
-        total = 0
-        details = []
-        
-        # Основные элементы
-        foundation = DimensionCalculator.calculate_foundation(data)
-        walls = DimensionCalculator.calculate_walls(data)
-        roof = DimensionCalculator.calculate_roof(data)
-        insulation = DimensionCalculator.calculate_insulation(data)
-        windows = DimensionCalculator.calculate_windows(data)
-        doors = DimensionCalculator.calculate_doors(data)
-        works = DimensionCalculator.calculate_works(data)
-        
-        total = foundation + walls + roof + insulation + windows + doors + works
-        
-        # Региональный коэффициент
-        region_coeff = REGIONAL_COEFFICIENTS[data.get('region', 'Другой')]
-        total *= region_coeff
-        
-        # Скидки
-        if data.get('window_count', 0) > 5:
-            total *= 0.95  # Скидка 5% при более 5 окон
-            
-        if data['width'] * data['length'] > 80:
-            total *= 0.97  # Скидка 3% на большие площади
-            
-        return round(total), details
+GUIDES = {
+    'foundation': {
+        'title': '🏗️ Выбор фундамента',
+        'content': '''🔍 <b>Подробный гайд по фундаментам:</b>
+1. <u>Свайно-винтовой</u>
+   - Стоимость: 15 000-20 000 руб/м²
+   - Срок монтажа: 2-3 дня
+   - Грунты: болотистые, пучинистые
+   - Плюсы: быстрый монтаж, низкая цена
+   - Минусы: требует антикоррозийной обработки
+2. <u>Ленточный</u>
+   - Стоимость: 20 000-25 000 руб/м²
+   - Срок монтажа: 14-21 день
+   - Грунты: стабильные, песчаные
+   - Плюсы: высокая несущая способность
+   - Минусы: требует времени на усадку
+💡 <b>Советы инженеров:</b>
+✅ Всегда делайте геологию грунта
+❌ Не экономьте на гидроизоляции
+📆 Оптимальный сезон монтажа: лето-осень'''
+    },
+    'walls': {
+        'title': '🧱 Каркас и стены',
+        'content': '''🔍 <b>Технологии строительства:</b>
+1. <u>Платформа</u>
+   - Толщина стен: 200-250 мм
+   - Утеплитель: базальтовая вата
+   - Обшивка: OSB-3 12 мм
+   - Пароизоляция: обязательна
+2. <u>Двойной каркас</u>
+   - Толщина стен: 300-400 мм
+   - Перекрестное утепление
+   - Шумоизоляция: 20-30 дБ
+📐 <b>Расчет материалов:</b>
+- Стойки: 50x150 мм с шагом 600 мм
+- Обвязки: двойная доска 50x200 мм
+- Крепеж: оцинкованные уголки'''
+    },
+    'roof': {
+        'title': '🏛️ Кровельные системы',
+        'content': '''🔍 <b>Типы кровельных систем:</b>
+1. <u>Холодная кровля</u>
+   - Уклон: 25-45°
+   - Вентиляция: продухи + коньковый аэратор
+   - Срок службы: 25-50 лет
+2. <u>Теплая кровля</u>
+   - Утеплитель: 250-300 мм
+   - Пароизоляция: фольгированная мембрана
+   - Контробрешетка: 50 мм зазор
+⚡ <b>Важно:</b>
+- Расчет снеговой нагрузки по СП 20.13330
+- Используйте ветрозащитные планки
+- Монтаж ендовы с двойным слоем гидроизоляции'''
+    }
+}
 
 def get_user_data(user_id):
     user_id_str = str(user_id)
@@ -498,11 +417,152 @@ def process_answer(message, current_step):
         return
     ask_next_question(user_id)
 
+class DimensionCalculator:
+    @staticmethod
+    def calculate_foundation(data):
+        foundation_type = data['foundation_type']
+        perimeter = 2 * (data['width'] + data['length'])
+        config = COST_CONFIG['materials']['foundation'][foundation_type]
+        
+        if foundation_type == 'Свайно-винтовой':
+            piles_count = math.ceil(perimeter / 1.5)
+            return piles_count * config['price_per_pile']
+        elif foundation_type == 'Ленточный':
+            depth = 0.8
+            width = 0.4
+            volume = perimeter * depth * width
+            return volume * config['price_per_m3']
+        elif foundation_type == 'Плитный':
+            area = data['width'] * data['length']
+            return area * config['price_per_m2']
+        return 0
+
+    @staticmethod
+    def calculate_walls(data):
+        wall_type = data['wall_type']
+        config = COST_CONFIG['materials']['walls'][wall_type]
+        perimeter = 2 * (data['width'] + data['length'])
+        height = data['height']
+        
+        if wall_type == 'Каркасные':
+            wall_area = perimeter * height
+            return wall_area * config['price_per_m2']
+        elif wall_type == 'Брусовые':
+            thickness = config['thickness']
+            volume = perimeter * height * thickness
+            return volume * config['price_per_m3']
+        return 0
+
+    @staticmethod
+    def calculate_roof(data):
+        roof_type = data['roof_type']
+        config = COST_CONFIG['materials']['roof'][roof_type]
+        width = data['width']
+        length = data['length']
+        
+        if data['floors'] == 'Одноэтажный':
+            slope = 25
+        else:
+            slope = 35
+            
+        roof_length = math.sqrt((width/2)**2 + (width/2 * math.tan(math.radians(slope)))**2)
+        roof_area = 2 * roof_length * length * config['slope_factor']
+        return roof_area * config['price_per_m2']
+
+    @staticmethod
+    def calculate_insulation(data):
+        insulation_type = data['insulation_type']
+        config = COST_CONFIG['materials']['insulation'][insulation_type]
+        perimeter = 2 * (data['width'] + data['length'])
+        height = data['height']
+        
+        wall_area = perimeter * height
+        volume_walls = wall_area * config['density'] / 1000
+        cost_walls = volume_walls * config['price_per_m3']
+        
+        roof_area = DimensionCalculator.calculate_roof(data) / COST_CONFIG['materials']['roof'][data['roof_type']]['price_per_m2']
+        volume_roof = roof_area * config['density'] / 1000
+        cost_roof = volume_roof * config['price_per_m3']
+        
+        return cost_walls + cost_roof
+
+    @staticmethod
+    def calculate_windows(data):
+        count = data['window_count']
+        return count * COST_CONFIG['materials']['windows']['price_per_unit']
+
+    @staticmethod
+    def calculate_doors(data):
+        entrance = data['entrance_doors']
+        interior = data['interior_doors']
+        return (entrance * COST_CONFIG['materials']['doors']['входная']['price']) + (interior * COST_CONFIG['materials']['doors']['межкомнатная']['price'])
+
+    @staticmethod
+    def calculate_works(data):
+        work_cost = 0
+        perimeter = 2 * (data['width'] + data['length'])
+        height = data['height']
+        
+        work_cost += perimeter * 0.5 * 1.2 * COST_CONFIG['work']['excavation']['price_per_m3']
+        work_cost += perimeter * height * COST_CONFIG['work']['carpentry']['price_per_m2']
+        return work_cost
+
+class CostCalculator:
+    @staticmethod
+    def calculate_total(data):
+        total = 0
+        details = []
+        
+        # Фундамент
+        foundation = DimensionCalculator.calculate_foundation(data)
+        details.append(f"{EMOJI_MAP['foundation']} Фундамент: {foundation:,.0f}{STYLES['currency']}")
+        
+        # Стены
+        walls = DimensionCalculator.calculate_walls(data)
+        details.append(f"🧱 Стены: {walls:,.0f}{STYLES['currency']}")
+        
+        # Кровля
+        roof = DimensionCalculator.calculate_roof(data)
+        details.append(f"{EMOJI_MAP['roof']} Кровля: {roof:,.0f}{STYLES['currency']}")
+        
+        # Утепление
+        insulation = DimensionCalculator.calculate_insulation(data)
+        details.append(f"{EMOJI_MAP['insulation']} Утепление: {insulation:,.0f}{STYLES['currency']}")
+        
+        # Окна
+        windows = DimensionCalculator.calculate_windows(data)
+        details.append(f"{EMOJI_MAP['windows']} Окна: {windows:,.0f}{STYLES['currency']}")
+        
+        # Двери
+        doors = DimensionCalculator.calculate_doors(data)
+        details.append(f"{EMOJI_MAP['doors']} Двери: {doors:,.0f}{STYLES['currency']}")
+        
+        # Работы
+        works = DimensionCalculator.calculate_works(data)
+        details.append(f"🛠️ Работы: {works:,.0f}{STYLES['currency']}")
+        
+        # Суммирование
+        total = sum([foundation, walls, roof, insulation, windows, doors, works])
+        
+        # Региональный коэффициент
+        region_coeff = REGIONAL_COEFFICIENTS.get(data.get('region', 'Другой'), 1.0)
+        total *= region_coeff
+        details.append(f"{EMOJI_MAP['region']} Региональный коэффициент: ×{region_coeff:.1f}")
+        
+        # Скидки
+        if data.get('window_count', 0) > 5:
+            total *= 0.95
+            details.append("🎁 Скидка 5% за окна")
+        if data['width'] * data['length'] > 80:
+            total *= 0.97
+            details.append("🎁 Скидка 3% за площадь")
+        
+        return round(total), details
+
 def calculate_and_send_result(user_id):
     try:
         user = get_user_data(user_id)
-        project_id = user['current_project']
-        project = user['projects'][project_id]
+        project = user['projects'][user['current_project']]
         total, details = CostCalculator.calculate_total(project['data'])
         send_result_message(user_id, total, details)
         schedule_reminder(user_id, project['name'])
@@ -632,6 +692,7 @@ def webhook():
     return '', 200
 
 def self_ping():
+    import threading
     while True:
         try:
             requests.get("https://karkasmaster.onrender.com")
@@ -641,12 +702,10 @@ def self_ping():
         threading.Event().wait(300)
 
 if __name__ == '__main__':
-    # Запускаем self_ping в отдельном потоке
     import threading
     ping_thread = threading.Thread(target=self_ping, daemon=True)
     ping_thread.start()
     
-    # Остальная настройка сервера
     webhook_url = f"https://karkasmaster.onrender.com/{API_TOKEN}"
     bot.remove_webhook()
     bot.set_webhook(url=webhook_url)
