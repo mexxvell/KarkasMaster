@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 # Инициализация Flask
 app = Flask(__name__)
 
+@app.route('/')
+def index():
+    return "Telegram-бот работает!"
+    
 # Конфигурация бота
 API_TOKEN = os.getenv('API_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
