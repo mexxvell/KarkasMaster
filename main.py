@@ -3,10 +3,13 @@ import os
 import logging
 import math
 from datetime import datetime
-from flask import Flask, request
+from flask import Flask, request, send_file
 import telebot
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from io import BytesIO
 
 # Настройка логирования
 logging.basicConfig(
@@ -56,42 +59,66 @@ EMOJI_MAP = {
     'windows': '🪟',
     'doors': '🚪',
     'terrace': '🌳',
-    'region': '📍'
+    'region': '📍',
+    'wall_frame': '🪵',
+    'wall_insulation': '🧽',
+    'wall_cladding': '얇'
 }
 
 COST_CONFIG = {
     'materials': {
-        'foundation': {'Свайно-винтовой': 2500},
-        'walls': {'Каркасные': 1200},
+        'foundation': {
+            'Свайно-винтовой': {'price_per_pile': 2500, 'depth': 2.5},
+            'Ленточный': {'price_per_m3': 5000},
+            'Плитный': {'price_per_m2': 3000}
+        },
+        'wall_frame': {
+            'Каркас 50x150': {'price_per_m3': 8000},
+            'Двойной каркас': {'price_per_m3': 12000}
+        },
+        'wall_insulation': {
+            'Минеральная вата': {'price_per_m3': 3000, 'min_thickness': 150},
+            'Эковата': {'price_per_m3': 2500, 'min_thickness': 100},
+            'Пенополистирол': {'price_per_m3': 4000, 'min_thickness': 50}
+        },
+        'wall_cladding': {
+            'OSB-3': {'price_per_m2': 400},
+            'Вагонка': {'price_per_m2': 500},
+            'Штукатурка': {'price_per_m2': 300}
+        },
         'roof': {
-            'Металлочерепица': 500,
-            'Мягкая кровля': 700,
-            'Фальцевая кровля': 900
+            'Металлочерепица': {'price_per_m2': 500, 'slope_factor': 1.2},
+            'Мягкая кровля': {'price_per_m2': 700, 'slope_factor': 1.1},
+            'Фальцевая кровля': {'price_per_m2': 900, 'slope_factor': 1.3}
         },
         'insulation': {
-            'Минеральная вата': {'price': 3000, 'density': 35},
-            'Эковата': {'price': 2500, 'density': 45},
-            'Пенополистирол': {'price': 4000, 'density': 25}
+            'Минеральная вата': {'price_per_m3': 3000, 'min_thickness': 150},
+            'Эковата': {'price_per_m3': 2500, 'min_thickness': 100},
+            'Пенополистирол': {'price_per_m3': 4000, 'min_thickness': 50}
         },
         'exterior': {
-            'Сайдинг': 400,
-            'Вагонка': 500,
-            'Штукатурка': 300
+            'Сайдинг': {'price_per_m2': 400},
+            'Вагонка': {'price_per_m2': 500},
+            'Штукатурка': {'price_per_m2': 300}
         },
         'interior': {
-            'Вагонка': 600,
-            'Гипсокартон': 400
+            'Вагонка': {'price_per_m2': 600},
+            'Гипсокартон': {'price_per_m2': 400}
         },
-        'windows': 8000,
+        'windows': {'price_per_unit': 8000},
         'doors': {
-            'входная': 15000,
-            'межкомнатная': 8000
+            'входная': {'price': 15000},
+            'межкомнатная': {'price': 8000}
         }
     },
     'work': {
-        'excavation': 1500,
-        'carpentry': 1000,
-        'roof_installation': 800
+        'excavation': {'price_per_m3': 1500},
+        'concrete_works': {'price_per_m3': 3000},
+        'carpentry': {'price_per_m2': 1000},
+        'roof_installation': {'price_per_m2': 800},
+        'insulation_work': {'price_per_m3': 2000},
+        'exterior_work': {'price_per_m2': 500},
+        'interior_work': {'price_per_m2': 700}
     }
 }
 
@@ -144,10 +171,24 @@ QUESTIONS = [
         'condition': lambda data: data['house_style'] == 'Скандинавский стиль'
     },
     {
-        'text': 'Утепление ❄️:',
+        'text': 'Кровля 🏛️:',
+        'options': ['Металлочерепица', 'Мягкая кровля'],
+        'key': 'roof_type',
+        'row_width': 2,
+        'condition': lambda data: data['house_style'] == 'Скандинавский стиль'
+    },
+    {
+        'text': 'Утепление стен ❄️:',
         'options': ['Минеральная вата', 'Эковата', 'Пенополистирол'],
-        'key': 'insulation_type',
+        'key': 'wall_insulation_type',
         'row_width': 2
+    },
+    {
+        'text': 'Толщина утеплителя (мм) 📏:',
+        'options': ['50', '100', '150', '200'],
+        'key': 'wall_insulation_thickness',
+        'row_width': 4,
+        'validation': lambda x, data: int(x) >= COST_CONFIG['materials']['wall_insulation'][data['wall_insulation_type']]['min_thickness']
     },
     {
         'text': 'Внешняя отделка 🎨:',
@@ -254,11 +295,15 @@ def get_user_data(user_id):
         }
     return user_data[user_id_str]
 
-def create_keyboard(items, row_width):
+def create_keyboard(items, row_width, skip_button=False, back_button=False):
     markup = types.ReplyKeyboardMarkup(row_width=row_width, resize_keyboard=True)
     filtered = [item for item in items if item != 'Пропустить']
     for i in range(0, len(filtered), row_width):
         markup.add(*filtered[i:i+row_width])
+    if skip_button:
+        markup.add('Пропустить')
+    if back_button and 'step' in get_user_data(user_id)['projects'][get_user_data(user_id)['current_project']]['data']:
+        markup.add('🔙 Назад')
     markup.add('❌ Отменить расчет')
     return markup
 
@@ -312,7 +357,15 @@ def start_new_project(message):
     project_id = f"project_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     user['projects'][project_id] = {
         'name': f"Проект от {datetime.now().strftime('%d.%m.%Y')}",
-        'data': {'foundation_type': 'Свайно-винтовой'},  # Автоматически устанавливаем фундамент
+        'data': {
+            'foundation_type': 'Свайно-винтовой',
+            'roof_type': 'Фальцевая кровля',
+            'wall_insulation_type': 'Минеральная вата',
+            'wall_insulation_thickness': 150,
+            'window_count': 1,
+            'entrance_doors': 1,
+            'interior_doors': 0
+        },
         'created_at': datetime.now(),
         'completed': False
     }
@@ -325,13 +378,14 @@ def ask_next_question(user_id):
     project = user['projects'][user['current_project']]
     current_step = project['data'].get('step', 0)
     
-    # Устанавливаем значения по умолчанию для стилей
+    # Установка значений по умолчанию в зависимости от стиля
     if project['data'].get('house_style') in ['A-frame', 'BARNHOUSE', 'ХОЗБЛОК']:
         project['data'].setdefault('floors', 'Одноэтажный')
         project['data'].setdefault('roof_type', 'Фальцевая кровля')
         project['data'].setdefault('window_count', 1)
         project['data'].setdefault('height', 3.0 if project['data']['house_style'] == 'A-frame' else 2.5)
     
+    # Пропуск шагов по условиям
     while current_step < TOTAL_STEPS:
         question = QUESTIONS[current_step]
         if 'condition' in question and not question['condition'](project['data']):
@@ -339,64 +393,86 @@ def ask_next_question(user_id):
             project['data']['step'] = current_step
         else:
             break
-            
+    
     if current_step >= TOTAL_STEPS:
         calculate_and_send_result(user_id)
         return
-        
+    
     question = QUESTIONS[current_step]
     progress_text = (
         f"{STYLES['header']} Шаг {current_step + 1}/{TOTAL_STEPS}\n"
         f"{question['text']}"
     )
-    markup = create_keyboard(question['options'], question.get('row_width', 2))
+    markup = create_keyboard(
+        question['options'],
+        question.get('row_width', 2),
+        'Пропустить' in question.get('options', []),
+        back_button=True
+    )
     bot.send_message(user_id, progress_text, reply_markup=markup)
     bot.register_next_step_handler_by_chat_id(user_id, process_answer, current_step=current_step)
 
-def validate_input(answer, question):
-    if answer not in question['options']:
+def validate_input(answer, question, user_data):
+    if answer not in question['options'] and answer not in ['Пропустить', '🔙 Назад']:
         return f"Выберите вариант из списка: {', '.join(question['options'])}"
-        
-    if question['key'] in ['width', 'length']:
+    
+    if question['key'] == 'wall_insulation_thickness':
+        min_thickness = COST_CONFIG['materials']['wall_insulation'][user_data['wall_insulation_type']]['min_thickness']
+        if int(answer) < min_thickness:
+            return f"Минимальная толщина для {user_data['wall_insulation_type']} - {min_thickness} мм"
+    
+    if question['key'] in ['width', 'length', 'height']:
         try:
             value = float(answer.replace(',', '.'))
             if 'validation' in question and not question['validation'](answer):
                 return "Недопустимое значение"
         except ValueError:
             return "Введите числовое значение"
-            
+    
     if question['key'] in ['window_count', 'entrance_doors', 'interior_doors']:
-        if not answer.isdigit():
+        if not answer.isdigit() and answer not in ['Пропустить', '🔙 Назад']:
             return "Введите целое число"
         if int(answer) < 0:
             return "Количество не может быть отрицательным"
+    
     return None
 
 def process_answer(message, current_step):
     user_id = message.chat.id
     user = get_user_data(user_id)
     project = user['projects'][user['current_project']]
-    question = QUESTIONS[current_step]
     
+    if message.text == "🔙 Назад":
+        if current_step > 0:
+            project['data']['step'] = current_step - 1
+            return ask_next_question(user_id)
+        else:
+            return show_main_menu(message)
+    
+    if message.text == "❌ Отменить расчет":
+        del user['projects'][user['current_project']]
+        user['current_project'] = None
+        return show_main_menu(message)
+    
+    question = QUESTIONS[current_step]
     try:
         answer = message.text.strip()
-        if answer == "❌ Отменить расчет":
-            del user['projects'][user['current_project']]
-            user['current_project'] = None
-            show_main_menu(message)
-            return
-            
-        error = validate_input(answer, question)
+        error = validate_input(answer, question, project['data'])
         if error:
             raise ValueError(error)
-            
-        if question['key'] in ['window_count', 'entrance_doors', 'interior_doors']:
-            project['data'][question['key']] = int(answer)
-        elif question['key'] in ['width', 'length', 'height']:
-            project['data'][question['key']] = float(answer.replace(',', '.'))
+        
+        if answer == 'Пропустить':
+            project['data'][question['key']] = None
         else:
-            project['data'][question['key']] = answer
-            
+            if question['key'] in ['window_count', 'entrance_doors', 'interior_doors']:
+                project['data'][question['key']] = int(answer)
+            elif question['key'] in ['width', 'length', 'height']:
+                project['data'][question['key']] = float(answer.replace(',', '.'))
+            elif question['key'] == 'wall_insulation_thickness':
+                project['data'][question['key']] = int(answer)
+            else:
+                project['data'][question['key']] = answer
+        
         project['data']['step'] = current_step + 1
         user['last_active'] = datetime.now()
         
@@ -405,77 +481,96 @@ def process_answer(message, current_step):
         bot.send_message(
             user_id,
             f"{STYLES['error']} Ошибка:\n{str(e)}\nПовторите ввод:",
-            reply_markup=create_keyboard(question['options'], question.get('row_width', 2))
+            reply_markup=create_keyboard(
+                question['options'],
+                question.get('row_width', 2),
+                'Пропустить' in question.get('options', []),
+                back_button=True
+            )
         )
         bot.register_next_step_handler_by_chat_id(user_id, process_answer, current_step=current_step)
         track_event('abandon', current_step)
         return
-        
+    
     ask_next_question(user_id)
 
 class DimensionCalculator:
     @staticmethod
     def calculate_foundation(data):
+        foundation_type = data['foundation_type']
         perimeter = 2 * (data['width'] + data['length'])
-        piles_count = math.ceil(perimeter / 1.5)
-        return piles_count * COST_CONFIG['materials']['foundation']['Свайно-винтовой']
-    
-    @staticmethod
-    def calculate_walls(data):
-        perimeter = 2 * (data['width'] + data['length'])
-        height = data.get('height', 2.5)
-        return perimeter * height * COST_CONFIG['materials']['walls']['Каркасные']
-    
+        config = COST_CONFIG['materials']['foundation'][foundation_type]
+        
+        if foundation_type == 'Свайно-винтовой':
+            piles_count = math.ceil(perimeter / 1.5)
+            return piles_count * config['price_per_pile']
+        elif foundation_type == 'Ленточный':
+            depth = 0.8
+            width = 0.4
+            volume = perimeter * depth * width
+            return volume * config['price_per_m3']
+        elif foundation_type == 'Плитный':
+            area = data['width'] * data['length']
+            return area * config['price_per_m2']
+        return 0
+
     @staticmethod
     def calculate_roof(data):
+        style = data.get('house_style')
         roof_type = data.get('roof_type', 'Фальцевая кровля')
+        config = COST_CONFIG['materials']['roof'][roof_type]
         width = data['width']
         length = data['length']
-        style = data.get('house_style', 'Скандинавский стиль')
         
         if style == 'Скандинавский стиль':
             slope = 25 if data['floors'] == 'Одноэтажный' else 35
         else:
             slope = 45
-            
-        roof_length = math.sqrt((width/2)**2 + (width/2 * math.tan(math.radians(slope)))**2)
-        roof_area = 2 * roof_length * length * COST_CONFIG['materials']['roof'][roof_type]
-        return roof_area
-    
+        
+        roof_length = (width / 2) / math.cos(math.radians(slope))
+        roof_area = 2 * roof_length * length * config['slope_factor']
+        
+        material_cost = roof_area * config['price_per_m2']
+        work_cost = roof_area * COST_CONFIG['work']['roof_installation']['price_per_m2']
+        return material_cost + work_cost
+
     @staticmethod
-    def calculate_insulation(data):
-        insulation_type = data['insulation_type']
-        config = COST_CONFIG['materials']['insulation'][insulation_type]
+    def calculate_walls(data):
         perimeter = 2 * (data['width'] + data['length'])
         height = data.get('height', 2.5)
+        wall_area = perimeter * height
         
-        wall_volume = perimeter * height * config['density'] / 1000
-        roof_area = DimensionCalculator.calculate_roof(data) / COST_CONFIG['materials']['roof'][data.get('roof_type', 'Фальцевая кровля')]
-        roof_volume = roof_area * config['density'] / 1000
+        frame_config = COST_CONFIG['materials']['wall_frame']['Каркас 50x150']
+        frame_volume = wall_area * 0.15  # 150 мм толщина
+        frame_cost = frame_volume * frame_config['price_per_m3']
         
-        return (wall_volume + roof_volume) * config['price']
-    
+        insulation_type = data['wall_insulation_type']
+        insulation_config = COST_CONFIG['materials']['wall_insulation'][insulation_type]
+        insulation_thickness = data.get('wall_insulation_thickness', insulation_config['min_thickness']) / 1000
+        insulation_volume = wall_area * insulation_thickness
+        insulation_cost = insulation_volume * insulation_config['price_per_m3']
+        
+        cladding_config = COST_CONFIG['materials']['wall_cladding'][data['exterior_type']]
+        cladding_cost = wall_area * cladding_config['price_per_m2']
+        
+        work_cost = wall_area * COST_CONFIG['work']['carpentry']['price_per_m2']
+        return frame_cost + insulation_cost + cladding_cost + work_cost
+
     @staticmethod
     def calculate_windows(data):
         count = data.get('window_count', 1)
-        return count * COST_CONFIG['materials']['windows']
-    
+        return count * COST_CONFIG['materials']['windows']['price_per_unit']
+
     @staticmethod
     def calculate_doors(data):
-        entrance = data.get('entrance_doors', 1)
-        interior = data.get('interior_doors', 0)
-        return (entrance * COST_CONFIG['materials']['doors']['входная']) + (interior * COST_CONFIG['materials']['doors']['межкомнатная'])
-    
+        entrance = data['entrance_doors']
+        interior = data['interior_doors']
+        return (entrance * COST_CONFIG['materials']['doors']['входная']['price']) + (interior * COST_CONFIG['materials']['doors']['межкомнатная']['price'])
+
     @staticmethod
-    def calculate_works(data):
-        perimeter = 2 * (data['width'] + data['length'])
-        height = data.get('height', 2.5)
-        
-        excavation_cost = perimeter * 0.5 * 1.2 * COST_CONFIG['work']['excavation']
-        carpentry_cost = perimeter * height * COST_CONFIG['work']['carpentry']
-        roof_cost = DimensionCalculator.calculate_roof(data) * COST_CONFIG['work']['roof_installation'] / 1000  # Цена за м²
-        
-        return excavation_cost + carpentry_cost + roof_cost
+    def calculate_insulation_work(data):
+        insulation_volume = 2 * (data['width'] + data['length']) * data.get('height', 2.5) * (data['wall_insulation_thickness'] / 1000)
+        return insulation_volume * COST_CONFIG['work']['insulation_work']['price_per_m3']
 
 class CostCalculator:
     @staticmethod
@@ -487,16 +582,16 @@ class CostCalculator:
         foundation = DimensionCalculator.calculate_foundation(data)
         details.append(f"{EMOJI_MAP['foundation']} Фундамент: {foundation:,.0f}{STYLES['currency']}")
         
-        # Стены
-        walls = DimensionCalculator.calculate_walls(data)
-        details.append(f"🧱 Стены: {walls:,.0f}{STYLES['currency']}")
-        
         # Кровля
         roof = DimensionCalculator.calculate_roof(data)
         details.append(f"{EMOJI_MAP['roof']} Кровля: {roof:,.0f}{STYLES['currency']}")
         
+        # Стены
+        walls = DimensionCalculator.calculate_walls(data)
+        details.append(f"{EMOJI_MAP['wall_frame']} Каркас: {walls:,.0f}{STYLES['currency']}")
+        
         # Утепление
-        insulation = DimensionCalculator.calculate_insulation(data)
+        insulation = DimensionCalculator.calculate_insulation_work(data)
         details.append(f"{EMOJI_MAP['insulation']} Утепление: {insulation:,.0f}{STYLES['currency']}")
         
         # Окна
@@ -507,16 +602,9 @@ class CostCalculator:
         doors = DimensionCalculator.calculate_doors(data)
         details.append(f"{EMOJI_MAP['doors']} Двери: {doors:,.0f}{STYLES['currency']}")
         
-        # Работы
-        works = DimensionCalculator.calculate_works(data)
-        details.append(f"🛠️ Работы: {works:,.0f}{STYLES['currency']}")
-        
-        # Суммирование
-        total = sum([foundation, walls, roof, insulation, windows, doors, works])
-        
         # Региональный коэффициент
         region_coeff = REGIONAL_COEFFICIENTS.get(data.get('region', 'Другой'), 1.0)
-        total *= region_coeff
+        total = sum([foundation, roof, walls, insulation, windows, doors]) * region_coeff
         details.append(f"{EMOJI_MAP['region']} Региональный коэффициент: ×{region_coeff:.1f}")
         
         # Скидки
@@ -536,7 +624,6 @@ def calculate_and_send_result(user_id):
         total, details = CostCalculator.calculate_total(project['data'])
         send_result_message(user_id, total, details)
         schedule_reminder(user_id, project['name'])
-        track_event('complete')
     except Exception as e:
         logger.error(f"Ошибка расчета: {str(e)}")
         bot.send_message(user_id, f"{STYLES['error']} Ошибка расчета: {str(e)}")
@@ -561,13 +648,54 @@ def send_result_message(user_id, total, details):
         f"💰 <b>Итоговая стоимость</b>: <code>{total:,.0f} руб.</code>"
     ]
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("📨 Отправить специалисту")
+    markup.row("📨 Отправить специалисту", "🖨️ Экспорт в PDF")
     markup.row("🔙 Главное меню")
     bot.send_message(
         user_id,
         "\n".join(result),
         reply_markup=markup,
         parse_mode='HTML'
+    )
+
+@bot.message_handler(func=lambda m: m.text == "🖨️ Экспорт в PDF")
+def export_to_pdf(message):
+    user_id = message.chat.id
+    user = get_user_data(user_id)
+    project_id = user.get('current_project') or max(
+        user['projects'].keys(),
+        key=lambda k: user['projects'][k]['created_at'],
+        default=None
+    )
+    if not project_id:
+        bot.send_message(user_id, f"{STYLES['error']} Нет активных проектов")
+        return
+    
+    project = user['projects'][project_id]
+    total, details = CostCalculator.calculate_total(project['data'])
+    
+    # Генерация PDF
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    text = pdf.beginText(40, 750)
+    text.setFont("Courier", 12)
+    
+    text.textLine(f"Смета для проекта: {project['name']}")
+    text.textLine(f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
+    text.textLine("")
+    
+    for line in details:
+        text.textLine(line.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', ''))
+    text.textLine(f"Итоговая стоимость: {total:,.0f} руб.")
+    
+    pdf.drawText(text)
+    pdf.save()
+    buffer.seek(0)
+    
+    bot.send_document(
+        user_id,
+        ('smeta.pdf', buffer),
+        caption=f"🖨️ Смета проекта {project['name']}",
+        reply_markup=create_main_menu()
     )
 
 @bot.message_handler(func=lambda m: m.text == "📨 Отправить специалисту")
@@ -588,23 +716,18 @@ def send_to_specialist(message):
         return
     try:
         total, details = CostCalculator.calculate_total(project['data'])
-        formatted_details = []
-        for item in details:
-            parts = item.split(':')
-            if len(parts) > 1:
-                name_part = parts[0].strip()
-                price_part = parts[1].strip()
-                formatted_details.append(f"<b>{name_part}</b>: <code>{price_part}</code>")
-            else:
-                formatted_details.append(item)
+        formatted_details = "\n".join(details).replace(STYLES['currency'], 'руб.')
         result = [
-            f"{STYLES['header']} Новый запрос от @{message.from_user.username}",
-            "📊 Детали расчета:",
-            *formatted_details,
-            STYLES['separator'],
-            f"💰 <b>Итоговая стоимость</b>: <code>{total:,.0f} руб.</code>"
+            f"Новый запрос от @{message.from_user.username}",
+            f"Проект: {project['name']}",
+            f"Регион: {project['data'].get('region', 'Не указан')}",
+            f"Площадь: {project['data']['width']}x{project['data']['length']} м",
+            f"Стиль: {project['data'].get('house_style', 'Не указан')}",
+            "Детали:",
+            *details,
+            f"Итоговая стоимость: {total:,.0f} руб."
         ]
-        bot.send_message(515650034, "\n".join(result), parse_mode='HTML')
+        bot.send_message(515650034, "\n".join(result))
         bot.send_message(user_id, f"{STYLES['success']} Запрос отправлен специалисту!")
     except Exception as e:
         logger.error(f"Ошибка отправки: {str(e)}")
