@@ -657,8 +657,15 @@ def self_ping():
         threading.Event().wait(300)
 
 if __name__ == '__main__':
-    threading.Thread(target=self_ping, daemon=True).start()
-    bot_thread = threading.Thread(target=bot.polling, kwargs={'none_stop': True})
+    # Удаляем старые вебхуки
+    bot.remove_webhook()
+    
+    # Запускаем бота в основном потоке
+    bot_thread = threading.Thread(target=bot.polling, kwargs={
+        'none_stop': True,
+        'interval': 0,
+        'timeout': 20
+    })
     bot_thread.daemon = True
     bot_thread.start()
     port = int(os.getenv('PORT', 5000))
