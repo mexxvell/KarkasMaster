@@ -295,15 +295,18 @@ def get_user_data(user_id):
         }
     return user_data[user_id_str]
 
-def create_keyboard(items, row_width, skip_button=False, back_button=False):
+def create_keyboard(user_id, items, row_width, skip_button=False, back_button=False):
     markup = types.ReplyKeyboardMarkup(row_width=row_width, resize_keyboard=True)
     filtered = [item for item in items if item != 'Пропустить']
     for i in range(0, len(filtered), row_width):
         markup.add(*filtered[i:i+row_width])
     if skip_button:
         markup.add('Пропустить')
-    if back_button and 'step' in get_user_data(user_id)['projects'][get_user_data(user_id)['current_project']]['data']:
-        markup.add('🔙 Назад')
+    if back_button:
+        user = get_user_data(user_id)
+        current_project = user['current_project']
+        if current_project and 'step' in user['projects'][current_project]['data']:
+            markup.add('🔙 Назад')
     markup.add('❌ Отменить расчет')
     return markup
 
@@ -404,6 +407,7 @@ def ask_next_question(user_id):
         f"{question['text']}"
     )
     markup = create_keyboard(
+        user_id,
         question['options'],
         question.get('row_width', 2),
         'Пропустить' in question.get('options', []),
@@ -415,12 +419,10 @@ def ask_next_question(user_id):
 def validate_input(answer, question, user_data):
     if answer not in question['options'] and answer not in ['Пропустить', '🔙 Назад']:
         return f"Выберите вариант из списка: {', '.join(question['options'])}"
-    
     if question['key'] == 'wall_insulation_thickness':
         min_thickness = COST_CONFIG['materials']['wall_insulation'][user_data['wall_insulation_type']]['min_thickness']
         if int(answer) < min_thickness:
             return f"Минимальная толщина для {user_data['wall_insulation_type']} - {min_thickness} мм"
-    
     if question['key'] in ['width', 'length', 'height']:
         try:
             value = float(answer.replace(',', '.'))
@@ -428,13 +430,11 @@ def validate_input(answer, question, user_data):
                 return "Недопустимое значение"
         except ValueError:
             return "Введите числовое значение"
-    
     if question['key'] in ['window_count', 'entrance_doors', 'interior_doors']:
         if not answer.isdigit() and answer not in ['Пропустить', '🔙 Назад']:
             return "Введите целое число"
         if int(answer) < 0:
             return "Количество не может быть отрицательным"
-    
     return None
 
 def process_answer(message, current_step):
@@ -475,13 +475,14 @@ def process_answer(message, current_step):
         
         project['data']['step'] = current_step + 1
         user['last_active'] = datetime.now()
-        
+    
     except Exception as e:
         logger.error(f"Ошибка пользователя {user_id}: {str(e)}")
         bot.send_message(
             user_id,
             f"{STYLES['error']} Ошибка:\n{str(e)}\nПовторите ввод:",
             reply_markup=create_keyboard(
+                user_id,
                 question['options'],
                 question.get('row_width', 2),
                 'Пропустить' in question.get('options', []),
@@ -500,7 +501,6 @@ class DimensionCalculator:
         foundation_type = data['foundation_type']
         perimeter = 2 * (data['width'] + data['length'])
         config = COST_CONFIG['materials']['foundation'][foundation_type]
-        
         if foundation_type == 'Свайно-винтовой':
             piles_count = math.ceil(perimeter / 1.5)
             return piles_count * config['price_per_pile']
@@ -521,15 +521,12 @@ class DimensionCalculator:
         config = COST_CONFIG['materials']['roof'][roof_type]
         width = data['width']
         length = data['length']
-        
         if style == 'Скандинавский стиль':
             slope = 25 if data['floors'] == 'Одноэтажный' else 35
         else:
             slope = 45
-        
         roof_length = (width / 2) / math.cos(math.radians(slope))
         roof_area = 2 * roof_length * length * config['slope_factor']
-        
         material_cost = roof_area * config['price_per_m2']
         work_cost = roof_area * COST_CONFIG['work']['roof_installation']['price_per_m2']
         return material_cost + work_cost
@@ -539,20 +536,16 @@ class DimensionCalculator:
         perimeter = 2 * (data['width'] + data['length'])
         height = data.get('height', 2.5)
         wall_area = perimeter * height
-        
         frame_config = COST_CONFIG['materials']['wall_frame']['Каркас 50x150']
         frame_volume = wall_area * 0.15  # 150 мм толщина
         frame_cost = frame_volume * frame_config['price_per_m3']
-        
         insulation_type = data['wall_insulation_type']
         insulation_config = COST_CONFIG['materials']['wall_insulation'][insulation_type]
         insulation_thickness = data.get('wall_insulation_thickness', insulation_config['min_thickness']) / 1000
         insulation_volume = wall_area * insulation_thickness
         insulation_cost = insulation_volume * insulation_config['price_per_m3']
-        
         cladding_config = COST_CONFIG['materials']['wall_cladding'][data['exterior_type']]
         cladding_cost = wall_area * cladding_config['price_per_m2']
-        
         work_cost = wall_area * COST_CONFIG['work']['carpentry']['price_per_m2']
         return frame_cost + insulation_cost + cladding_cost + work_cost
 
@@ -577,36 +570,28 @@ class CostCalculator:
     def calculate_total(data):
         total = 0
         details = []
-        
         # Фундамент
         foundation = DimensionCalculator.calculate_foundation(data)
         details.append(f"{EMOJI_MAP['foundation']} Фундамент: {foundation:,.0f}{STYLES['currency']}")
-        
         # Кровля
         roof = DimensionCalculator.calculate_roof(data)
         details.append(f"{EMOJI_MAP['roof']} Кровля: {roof:,.0f}{STYLES['currency']}")
-        
         # Стены
         walls = DimensionCalculator.calculate_walls(data)
         details.append(f"{EMOJI_MAP['wall_frame']} Каркас: {walls:,.0f}{STYLES['currency']}")
-        
         # Утепление
         insulation = DimensionCalculator.calculate_insulation_work(data)
         details.append(f"{EMOJI_MAP['insulation']} Утепление: {insulation:,.0f}{STYLES['currency']}")
-        
         # Окна
         windows = DimensionCalculator.calculate_windows(data)
         details.append(f"{EMOJI_MAP['windows']} Окна: {windows:,.0f}{STYLES['currency']}")
-        
         # Двери
         doors = DimensionCalculator.calculate_doors(data)
         details.append(f"{EMOJI_MAP['doors']} Двери: {doors:,.0f}{STYLES['currency']}")
-        
         # Региональный коэффициент
         region_coeff = REGIONAL_COEFFICIENTS.get(data.get('region', 'Другой'), 1.0)
         total = sum([foundation, roof, walls, insulation, windows, doors]) * region_coeff
         details.append(f"{EMOJI_MAP['region']} Региональный коэффициент: ×{region_coeff:.1f}")
-        
         # Скидки
         if data.get('window_count', 0) > 5:
             total *= 0.95
@@ -614,7 +599,6 @@ class CostCalculator:
         if data['width'] * data['length'] > 80:
             total *= 0.97
             details.append("🎁 Скидка 3% за площадь")
-        
         return round(total), details
 
 def calculate_and_send_result(user_id):
@@ -669,28 +653,22 @@ def export_to_pdf(message):
     if not project_id:
         bot.send_message(user_id, f"{STYLES['error']} Нет активных проектов")
         return
-    
     project = user['projects'][project_id]
     total, details = CostCalculator.calculate_total(project['data'])
-    
     # Генерация PDF
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     text = pdf.beginText(40, 750)
     text.setFont("Courier", 12)
-    
     text.textLine(f"Смета для проекта: {project['name']}")
     text.textLine(f"Дата: {datetime.now().strftime('%d.%m.%Y')}")
     text.textLine("")
-    
     for line in details:
         text.textLine(line.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', ''))
     text.textLine(f"Итоговая стоимость: {total:,.0f} руб.")
-    
     pdf.drawText(text)
     pdf.save()
     buffer.seek(0)
-    
     bot.send_document(
         user_id,
         ('smeta.pdf', buffer),
@@ -799,7 +777,6 @@ if __name__ == '__main__':
     import threading
     ping_thread = threading.Thread(target=self_ping, daemon=True)
     ping_thread.start()
-    
     webhook_url = f"https://karkasmaster.onrender.com/{API_TOKEN}"
     bot.remove_webhook()
     bot.set_webhook(url=webhook_url)
