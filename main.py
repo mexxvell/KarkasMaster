@@ -6,6 +6,7 @@ from flask import Flask, request
 import telebot
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
+import math
 
 # Настройка логирования
 logging.basicConfig(
@@ -61,56 +62,52 @@ EMOJI_MAP = {
 COST_CONFIG = {
     'materials': {
         'foundation': {
-            'Свайно-винтовой': 15000,
-            'Ленточный': 20000,
-            'Плитный': 25000
+            'Свайно-винтовой': {'price_per_pile': 2500, 'depth': 2.5},
+            'Ленточный': {'price_per_m3': 5000},
+            'Плитный': {'price_per_m2': 3000}
+        },
+        'walls': {
+            'Каркасные': {'price_per_m2': 1200, 'thickness': 0.15},
+            'Брусовые': {'price_per_m3': 10000, 'thickness': 0.2}
         },
         'roof': {
-            'Металлочерепица': 1200,
-            'Мягкая кровля': 800,
-            'Фальцевая кровля': 1800,
-            'Пропустить': 0
+            'Металлочерепица': {'price_per_m2': 500, 'slope_factor': 1.2},
+            'Мягкая кровля': {'price_per_m2': 700, 'slope_factor': 1.1},
+            'Фальцевая кровля': {'price_per_m2': 900, 'slope_factor': 1.3}
         },
         'insulation': {
-            'Минеральная вата': {'price': 500, 'min_thickness': 150},
-            'Эковата': {'price': 400, 'min_thickness': 200},
-            'Пенополистирол': {'price': 600, 'min_thickness': 100},
-            'Пропустить': 0
+            'Минеральная вата': {'price_per_m3': 3000, 'density': 35},
+            'Эковата': {'price_per_m3': 2500, 'density': 45},
+            'Пенополистирол': {'price_per_m3': 4000, 'density': 25}
         },
         'exterior': {
-            'Сайдинг': 300,
-            'Вагонка': 400,
-            'Штукатурка': 250,
-            'Пропустить': 0
+            'Сайдинг': {'price_per_m2': 400, 'consumption': 1.1},
+            'Вагонка': {'price_per_m2': 500, 'consumption': 1.05},
+            'Штукатурка': {'price_per_m2': 300, 'consumption': 1.2}
         },
         'interior': {
-            'Вагонка': 350,
-            'Гипсокартон': 300,
-            'Другое': 0,
-            'Пропустить': 0
+            'Вагонка': {'price_per_m2': 600, 'consumption': 1.1},
+            'Гипсокартон': {'price_per_m2': 400, 'consumption': 1.05}
         },
-        'windows': 5000,
+        'windows': {'price_per_unit': 8000, 'avg_area': 1.5},
         'doors': {
-            'входная': 15000,
-            'межкомнатная': 8000
+            'входная': {'price': 15000, 'avg_area': 2.0},
+            'межкомнатная': {'price': 8000, 'avg_area': 1.8}
         }
     },
     'work': {
-        'base': {
-            'price': 8000,
-            'floor_multiplier': {
-                'Одноэтажный': 1.0,
-                'Двухэтажный': 0.9,
-                'С мансардой': 1.2
-            }
-        },
-        'terrace': 3000,
-        'basement': 1500
+        'excavation': {'price_per_m3': 1500},
+        'concrete_works': {'price_per_m3': 3000},
+        'carpentry': {'price_per_m2': 1000},
+        'roof_installation': {'price_per_m2': 800},
+        'insulation_work': {'price_per_m3': 2000},
+        'exterior_work': {'price_per_m2': 500},
+        'interior_work': {'price_per_m2': 700}
     }
 }
 
 REGIONAL_COEFFICIENTS = {
-    'Калужская обл': 1,
+    'Калужская обл': 1.0,
     'Московская обл': 1.2,
     'Другой': 1.5
 }
@@ -123,137 +120,228 @@ QUESTIONS = [
         'row_width': 2
     },
     {
-        'text': '🏡 Площадь дома (кв.м):',
-        'options': ['100', '120', '150', 'Пропустить'],
-        'key': 'area',
-        'max': 1000,
-        'row_width': 2
+        'text': '📐 Ширина дома (м):',
+        'options': ['4', '6', '8', '10'],
+        'key': 'width',
+        'row_width': 4,
+        'validation': lambda x: 4 <= float(x) <= 12
     },
     {
-        'text': 'Этажность 🏠:',
-        'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой', 'Пропустить'],
+        'text': '📏 Длина дома (м):',
+        'options': ['8', '10', '12', '14'],
+        'key': 'length',
+        'row_width': 4,
+        'validation': lambda x: 6 <= float(x) <= 16
+    },
+    {
+        'text': '瓴 Высота этажа (м):',
+        'options': ['2.5', '3.0'],
+        'key': 'height',
+        'row_width': 2,
+        'validation': lambda x: x in ['2.5', '3.0']
+    },
+    {
+        'text': 'этажность 🏠:',
+        'options': ['Одноэтажный', 'Двухэтажный', 'С мансардой'],
         'key': 'floors',
         'row_width': 2
     },
     {
         'text': 'Фундамент 🏗️:',
-        'options': ['Свайно-винтовой', 'Ленточный', 'Плитный', 'Пропустить'],
-        'key': 'foundation',
+        'options': ['Свайно-винтовой', 'Ленточный', 'Плитный'],
+        'key': 'foundation_type',
         'row_width': 2
     },
     {
-        'text': 'Кровля:',
-        'options': ['Металлочерепица', 'Мягкая кровля', 'Фальцевая кровля', 'Пропустить'],
-        'key': 'roof',
+        'text': 'Кровля 🏛️:',
+        'options': ['Металлочерепица', 'Мягкая кровля', 'Фальцевая кровля'],
+        'key': 'roof_type',
         'row_width': 2
     },
     {
-        'text': 'Утеплитель ❄️:',
-        'options': ['Минеральная вата', 'Эковата', 'Пенополистирол', 'Пропустить'],
-        'key': 'insulation',
+        'text': 'Утепление ❄️:',
+        'options': ['Минеральная вата', 'Эковата', 'Пенополистирол'],
+        'key': 'insulation_type',
         'row_width': 2
     },
     {
-        'text': 'Толщина утеплителя (мм) 📏:',
-        'options': ['100', '150', '200'],
-        'key': 'insulation_thickness',
-        'row_width': 3
+        'text': 'Тип стен 🧱:',
+        'options': ['Каркасные', 'Брусовые'],
+        'key': 'wall_type',
+        'row_width': 2
     },
     {
         'text': 'Внешняя отделка 🎨:',
-        'options': ['Сайдинг', 'Вагонка', 'Штукатурка', 'Пропустить'],
-        'key': 'exterior',
+        'options': ['Сайдинг', 'Вагонка', 'Штукатурка'],
+        'key': 'exterior_type',
         'row_width': 2
     },
     {
         'text': 'Внутренняя отделка 🛋️:',
-        'options': ['Вагонка', 'Гипсокартон', 'Другое', 'Пропустить'],
-        'key': 'interior',
+        'options': ['Вагонка', 'Гипсокартон'],
+        'key': 'interior_type',
         'row_width': 2
     },
     {
         'text': 'Количество окон 🪟:',
-        'options': ['1', '2', '3', '4', '5', '6'],
-        'key': 'windows_count',
-        'row_width': 3
+        'options': [str(x) for x in range(1, 11)],
+        'key': 'window_count',
+        'row_width': 5,
+        'validation': lambda x: 1 <= int(x) <= 10
     },
     {
         'text': 'Входные двери 🚪:',
-        'options': ['1', '2', '3', '4', '5', '6'],
+        'options': [str(x) for x in range(1, 6)],
         'key': 'entrance_doors',
-        'row_width': 3
+        'row_width': 5,
+        'validation': lambda x: 1 <= int(x) <= 5
     },
     {
         'text': 'Межкомнатные двери 🚪:',
-        'options': ['1', '2', '3', '4', '5', '6'],
-        'key': 'inner_doors',
-        'row_width': 3
-    },
-    {
-        'text': 'Терраса/балкон (кв.м) 🌳:',
-        'options': ['0', '10', '20', '30', 'Пропустить'],
-        'key': 'terrace_area',
-        'row_width': 2
+        'options': [str(x) for x in range(1, 11)],
+        'key': 'interior_doors',
+        'row_width': 5,
+        'validation': lambda x: 1 <= int(x) <= 10
     }
 ]
 
 TOTAL_STEPS = len(QUESTIONS)
 
-GUIDES = {
-    'foundation': {
-        'title': '🏗️ Выбор фундамента',
-        'content': '''🔍 <b>Подробный гайд по фундаментам:</b>
-1. <u>Свайно-винтовой</u>
-   - Стоимость: 15 000-20 000 руб/м²
-   - Срок монтажа: 2-3 дня
-   - Грунты: болотистые, пучинистые
-   - Плюсы: быстрый монтаж, низкая цена
-   - Минусы: требует антикоррозийной обработки
-2. <u>Ленточный</u>
-   - Стоимость: 20 000-25 000 руб/м²
-   - Срок монтажа: 14-21 день
-   - Грунты: стабильные, песчаные
-   - Плюсы: высокая несущая способность
-   - Минусы: требует времени на усадку
-💡 <b>Советы инженеров:</b>
-✅ Всегда делайте геологию грунта
-❌ Не экономьте на гидроизоляции
-📆 Оптимальный сезон монтажа: лето-осень'''
-    },
-    'walls': {
-        'title': '🧱 Каркас и стены',
-        'content': '''🔍 <b>Технологии строительства:</b>
-1. <u>Платформа</u>
-   - Толщина стен: 200-250 мм
-   - Утеплитель: базальтовая вата
-   - Обшивка: OSB-3 12 мм
-   - Пароизоляция: обязательна
-2. <u>Двойной каркас</u>
-   - Толщина стен: 300-400 мм
-   - Перекрестное утепление
-   - Шумоизоляция: 20-30 дБ
-📐 <b>Расчет материалов:</b>
-- Стойки: 50x150 мм с шагом 600 мм
-- Обвязки: двойная доска 50x200 мм
-- Крепеж: оцинкованные уголки'''
-    },
-    'roof': {
-        'title': '🏛️ Кровельные системы',
-        'content': '''🔍 <b>Типы кровельных систем:</b>
-1. <u>Холодная кровля</u>
-   - Уклон: 25-45°
-   - Вентиляция: продухи + коньковый аэратор
-   - Срок службы: 25-50 лет
-2. <u>Теплая кровля</u>
-   - Утеплитель: 250-300 мм
-   - Пароизоляция: фольгированная мембрана
-   - Контробрешетка: 50 мм зазор
-⚡ <b>Важно:</b>
-- Расчет снеговой нагрузки по СП 20.13330
-- Используйте ветрозащитные планки
-- Монтаж ендовы с двойным слоем гидроизоляции'''
-    }
-}
+class DimensionCalculator:
+    @staticmethod
+    def calculate_foundation(data):
+        foundation_type = data['foundation_type']
+        perimeter = 2 * (data['width'] + data['length'])
+        config = COST_CONFIG['materials']['foundation'][foundation_type]
+        
+        if foundation_type == 'Свайно-винтовой':
+            piles_count = math.ceil(perimeter / 1.5)  # Расстояние между сваями 1.5м
+            return piles_count * config['price_per_pile']
+            
+        elif foundation_type == 'Ленточный':
+            depth = 0.8  # Глубина ленты
+            width = 0.4   # Ширина ленты
+            volume = perimeter * depth * width
+            return volume * config['price_per_m3']
+            
+        elif foundation_type == 'Плитный':
+            area = data['width'] * data['length']
+            return area * config['price_per_m2']
+            
+        return 0
+
+    @staticmethod
+    def calculate_walls(data):
+        wall_type = data['wall_type']
+        config = COST_CONFIG['materials']['walls'][wall_type]
+        perimeter = 2 * (data['width'] + data['length'])
+        height = data['height']
+        
+        if wall_type == 'Каркасные':
+            wall_area = perimeter * height
+            return wall_area * config['price_per_m2']
+            
+        elif wall_type == 'Брусовые':
+            thickness = config['thickness']
+            volume = perimeter * height * thickness
+            return volume * config['price_per_m3']
+            
+        return 0
+
+    @staticmethod
+    def calculate_roof(data):
+        roof_type = data['roof_type']
+        config = COST_CONFIG['materials']['roof'][roof_type]
+        perimeter = 2 * (data['width'] + data['length'])
+        width = data['width']
+        length = data['length']
+        
+        # Расчет площади крыши с учетом уклона
+        if data['floors'] == 'Одноэтажный':
+            slope = 25  # Уклон 25 градусов
+        else:
+            slope = 35  # Уклон 35 градусов для мансард
+            
+        roof_length = math.sqrt((width/2)**2 + (width/2 * math.tan(math.radians(slope)))**2)
+        roof_area = 2 * roof_length * length * config['slope_factor']
+        
+        return roof_area * config['price_per_m2']
+
+    @staticmethod
+    def calculate_insulation(data):
+        insulation_type = data['insulation_type']
+        config = COST_CONFIG['materials']['insulation'][insulation_type]
+        perimeter = 2 * (data['width'] + data['length'])
+        height = data['height']
+        wall_area = perimeter * height
+        
+        # Утепление стен
+        volume_walls = wall_area * config['density'] / 1000  # Перевод мм в м
+        cost_walls = volume_walls * config['price_per_m3']
+        
+        # Утепление крыши
+        roof_area = DimensionCalculator.calculate_roof(data) / COST_CONFIG['materials']['roof'][data['roof_type']]['price_per_m2']
+        volume_roof = roof_area * config['density'] / 1000
+        cost_roof = volume_roof * config['price_per_m3']
+        
+        return cost_walls + cost_roof
+
+    @staticmethod
+    def calculate_windows(data):
+        count = data['window_count']
+        config = COST_CONFIG['materials']['windows']
+        return count * config['price_per_unit']
+
+    @staticmethod
+    def calculate_doors(data):
+        entrance = data['entrance_doors']
+        interior = data['interior_doors']
+        config = COST_CONFIG['materials']['doors']
+        return (entrance * config['входная']['price']) + (interior * config['межкомнатная']['price'])
+
+    @staticmethod
+    def calculate_works(data):
+        work_cost = 0
+        perimeter = 2 * (data['width'] + data['length'])
+        height = data['height']
+        
+        # Земляные работы
+        work_cost += perimeter * 0.5 * 1.2 * COST_CONFIG['work']['excavation']['price_per_m3']
+        
+        # Столярные работы
+        work_cost += perimeter * height * COST_CONFIG['work']['carpentry']['price_per_m2']
+        
+        return work_cost
+
+class CostCalculator:
+    @staticmethod
+    def calculate_total(data):
+        total = 0
+        details = []
+        
+        # Основные элементы
+        foundation = DimensionCalculator.calculate_foundation(data)
+        walls = DimensionCalculator.calculate_walls(data)
+        roof = DimensionCalculator.calculate_roof(data)
+        insulation = DimensionCalculator.calculate_insulation(data)
+        windows = DimensionCalculator.calculate_windows(data)
+        doors = DimensionCalculator.calculate_doors(data)
+        works = DimensionCalculator.calculate_works(data)
+        
+        total = foundation + walls + roof + insulation + windows + doors + works
+        
+        # Региональный коэффициент
+        region_coeff = REGIONAL_COEFFICIENTS[data.get('region', 'Другой')]
+        total *= region_coeff
+        
+        # Скидки
+        if data.get('window_count', 0) > 5:
+            total *= 0.95  # Скидка 5% при более 5 окон
+            
+        if data['width'] * data['length'] > 80:
+            total *= 0.97  # Скидка 3% на большие площади
+            
+        return round(total), details
 
 def get_user_data(user_id):
     user_id_str = str(user_id)
@@ -354,16 +442,14 @@ def ask_next_question(user_id):
 def validate_input(answer, question):
     if answer not in question['options'] and answer != 'Пропустить':
         return f"Выберите вариант из списка: {', '.join(question['options'])}"
-    if question['key'] in ['area', 'terrace_area']:
+    if question['key'] in ['width', 'length', 'height']:
         try:
             value = float(answer.replace(',', '.'))
-            if 'max' in question and value > question['max']:
-                return f"Максимальное значение: {question['max']} кв.м"
-            if value < 0:
-                return "Значение не может быть отрицательным"
+            if 'validation' in question and not question['validation'](answer):
+                return "Недопустимое значение"
         except ValueError:
             return "Введите числовое значение"
-    elif question['key'] in ['windows_count', 'entrance_doors', 'inner_doors']:
+    elif question['key'] in ['window_count', 'entrance_doors', 'interior_doors']:
         if not answer.isdigit():
             return "Введите целое число"
         if int(answer) < 0:
@@ -388,9 +474,9 @@ def process_answer(message, current_step):
         if answer == 'Пропустить':
             project['data'][question['key']] = None
         else:
-            if question['key'] in ['windows_count', 'entrance_doors', 'inner_doors']:
+            if question['key'] in ['window_count', 'entrance_doors', 'interior_doors']:
                 project['data'][question['key']] = int(answer)
-            elif question['key'] in ['area', 'terrace_area']:
+            elif question['key'] in ['width', 'length', 'height']:
                 project['data'][question['key']] = float(answer.replace(',', '.'))
             else:
                 project['data'][question['key']] = answer
@@ -411,115 +497,6 @@ def process_answer(message, current_step):
         track_event('abandon', current_step)
         return
     ask_next_question(user_id)
-
-class CostCalculator:
-    @staticmethod
-    def calculate_total(data):
-        total = 0
-        details = []
-        base_cost = CostCalculator._calculate_base_works(data)
-        total += base_cost['total']
-        details.extend(base_cost['details'])
-        materials_cost = CostCalculator._calculate_materials(data)
-        total += materials_cost['total']
-        details.extend(materials_cost['details'])
-        additional_cost = CostCalculator._calculate_additional(data)
-        total += additional_cost['total']
-        details.extend(additional_cost['details'])
-        total = CostCalculator._apply_coefficients(data, total, details)
-        return round(total, 2), details
-
-    @staticmethod
-    def _calculate_base_works(data):
-        total = 0
-        details = []
-        floor_type = data.get('floors', 'Одноэтажный')
-        area = float(data.get('area', 100))
-        base_config = COST_CONFIG['work']['base']
-        cost = area * base_config['price'] * base_config['floor_multiplier'][floor_type]
-        total += cost
-        details.append(f"{EMOJI_MAP['foundation']} <b>Основные работы ({floor_type})</b>: {cost:,.0f}{STYLES['currency']}")
-        return {'total': total, 'details': details}
-
-    @staticmethod
-    def _calculate_materials(data):
-        total = 0
-        details = []
-        area = float(data.get('area', 100))
-        foundation = data.get('foundation')
-        if foundation and foundation != 'Пропустить':
-            cost = COST_CONFIG['materials']['foundation'][foundation]
-            total += cost
-            details.append(f"{EMOJI_MAP['foundation']} Фундамент ({foundation}): {cost:,.0f}{STYLES['currency']}")
-        roof = data.get('roof')
-        if roof and roof != 'Пропустить':
-            roof_area = CostCalculator._calculate_roof_area(data)
-            cost = roof_area * COST_CONFIG['materials']['roof'][roof]
-            total += cost
-            details.append(f"{EMOJI_MAP['roof']} Кровля ({roof}): {cost:,.0f}{STYLES['currency']}")
-        insulation = data.get('insulation')
-        if insulation and insulation != 'Пропустить':
-            thickness = float(data.get('insulation_thickness', 150))
-            material = COST_CONFIG['materials']['insulation'][insulation]
-            cost = (thickness / 1000) * area * material['price']  # Исправлено деление на 1000
-            total += cost
-            details.append(f"{EMOJI_MAP['insulation']} Утеплитель ({insulation} {thickness}мм): {cost:,.0f}{STYLES['currency']}")
-        for category in ['exterior', 'interior']:
-            material = data.get(category)
-            if material and material != 'Пропустить':
-                cost = area * COST_CONFIG['materials'][category][material]
-                total += cost
-                details.append(f"{EMOJI_MAP[category]} {'Внешняя' if category == 'exterior' else 'Внутренняя'} отделка ({material}): {cost:,.0f}{STYLES['currency']}")
-        return {'total': total, 'details': details}
-
-    @staticmethod
-    def _calculate_additional(data):
-        total = 0
-        details = []
-        windows = int(data.get('windows_count', 0))
-        entrance_doors = int(data.get('entrance_doors', 0))
-        inner_doors = int(data.get('inner_doors', 0))
-        cost = (
-            windows * COST_CONFIG['materials']['windows'] +
-            entrance_doors * COST_CONFIG['materials']['doors']['входная'] +
-            inner_doors * COST_CONFIG['materials']['doors']['межкомнатная']
-        )
-        total += cost
-        details.append(f"{EMOJI_MAP['windows']} Окна: {windows} шт. - {windows*COST_CONFIG['materials']['windows']:,.0f}{STYLES['currency']}")
-        details.append(f"{EMOJI_MAP['doors']} Входные двери: {entrance_doors} шт. - {entrance_doors*COST_CONFIG['materials']['doors']['входная']:,.0f}{STYLES['currency']}")
-        details.append(f"{EMOJI_MAP['doors']} Межкомнатные двери: {inner_doors} шт. - {inner_doors*COST_CONFIG['materials']['doors']['межкомнатная']:,.0f}{STYLES['currency']}")
-        terrace_area = float(data.get('terrace_area', 0))
-        if terrace_area > 0:
-            cost = terrace_area * COST_CONFIG['work']['terrace']
-            total += cost
-            details.append(f"{EMOJI_MAP['terrace']} Терраса ({terrace_area} м²): {cost:,.0f}{STYLES['currency']}")
-        return {'total': total, 'details': details}
-
-    @staticmethod
-    def _apply_coefficients(data, total, details):
-        region = data.get('region', 'Другой')
-        region_coeff = REGIONAL_COEFFICIENTS.get(region, 1.0)
-        total *= region_coeff
-        details.append(f"{EMOJI_MAP['region']} Региональный коэффициент ({region}): ×{region_coeff}")
-        selected_items = sum(1 for k in data if data.get(k) and k not in ['area', 'floors', 'region'])
-        if selected_items > 5:
-            total *= 0.9
-            details.append(f"🎁 Скидка за комплексный заказ: 10%")
-        area = float(data.get('area', 100))
-        if area > 200:
-            total *= 0.95
-            details.append(f"🎁 Скидка за большую площадь: 5%")
-        return total
-
-    @staticmethod
-    def _calculate_roof_area(data):
-        area = float(data.get('area', 100))
-        floors = data.get('floors', 'Одноэтажный')
-        if floors == 'Двухэтажный':
-            return area * 0.6
-        elif floors == 'С мансардой':
-            return area * 1.1
-        return area * 0.8
 
 def calculate_and_send_result(user_id):
     try:
@@ -647,23 +624,22 @@ def back_to_main_menu(message):
     user['current_project'] = None
     show_main_menu(message)
 
-
 # Обработчик вебхуков
 @app.route(f'/{API_TOKEN}', methods=['POST'])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
     bot.process_new_updates([update])
     return '', 200
-    
+
 def self_ping():
-    while True:  # <- Отступ в 4 пробела
-        try:     # <- Отступ в 4 пробела
+    while True:
+        try:
             requests.get("https://karkasmaster.onrender.com")
             logger.info("Self-ping успешен")
         except Exception as e:
             logger.error(f"Ошибка self-ping: {str(e)}")
-        threading.Event().wait(300)  # <- Исправлено: threading.Event() вместо Event()
-        
+        threading.Event().wait(300)
+
 if __name__ == '__main__':
     # Запускаем self_ping в отдельном потоке
     import threading
