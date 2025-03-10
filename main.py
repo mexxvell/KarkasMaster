@@ -655,13 +655,13 @@ def webhook():
     return '', 200
     
 def self_ping():
-    while True:
-        try:
+    while True:  # <- Отступ в 4 пробела
+        try:     # <- Отступ в 4 пробела
             requests.get("https://karkasmaster.onrender.com")
             logger.info("Self-ping успешен")
         except Exception as e:
             logger.error(f"Ошибка self-ping: {str(e)}")
-        threading.Event().wait(500)
+        threading.Event().wait(500)  # <- Исправлено: threading.Event() вместо Event()
         
 if __name__ == '__main__':
     # Настройка вебхука
