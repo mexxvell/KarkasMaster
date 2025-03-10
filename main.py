@@ -664,11 +664,14 @@ def self_ping():
         threading.Event().wait(500)  # <- Исправлено: threading.Event() вместо Event()
         
 if __name__ == '__main__':
-    # Настройка вебхука
+    # Запускаем self_ping в отдельном потоке
+    import threading
+    ping_thread = threading.Thread(target=self_ping, daemon=True)
+    ping_thread.start()
+    
+    # Остальная настройка сервера
     webhook_url = f"https://karkasmaster.onrender.com/{API_TOKEN}"
     bot.remove_webhook()
     bot.set_webhook(url=webhook_url)
-    
-    # Запуск Flask
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
