@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 # Инициализация Flask
 app = Flask(__name__)
 
+@app.route('/')
+def index():
+    return "Telegram-бот работает!"
+
 # Конфигурация бота
 API_TOKEN = os.getenv('API_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
@@ -641,6 +645,15 @@ def back_to_main_menu(message):
     user = get_user_data(user_id)
     user['current_project'] = None
     show_main_menu(message)
+    
+    def self_ping():
+    while True:
+        try:
+            requests.get("https://karkasmaster.onrender.com")
+            logger.info("Self-ping успешен")
+        except Exception as e:
+            logger.error(f"Ошибка self-ping: {str(e)}")
+        threading.Event().wait(500)
 
 # Обработчик вебхуков
 @app.route(f'/{API_TOKEN}', methods=['POST'])
