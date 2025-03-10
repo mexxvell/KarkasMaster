@@ -645,15 +645,7 @@ def back_to_main_menu(message):
     user = get_user_data(user_id)
     user['current_project'] = None
     show_main_menu(message)
-    
-    def self_ping():
-    while True:
-        try:
-            requests.get("https://karkasmaster.onrender.com")
-            logger.info("Self-ping успешен")
-        except Exception as e:
-            logger.error(f"Ошибка self-ping: {str(e)}")
-        threading.Event().wait(500)
+
 
 # Обработчик вебхуков
 @app.route(f'/{API_TOKEN}', methods=['POST'])
@@ -661,7 +653,16 @@ def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
     bot.process_new_updates([update])
     return '', 200
-
+    
+def self_ping():
+    while True:
+        try:
+            requests.get("https://karkasmaster.onrender.com")
+            logger.info("Self-ping успешен")
+        except Exception as e:
+            logger.error(f"Ошибка self-ping: {str(e)}")
+        threading.Event().wait(500)
+        
 if __name__ == '__main__':
     # Настройка вебхука
     webhook_url = f"https://karkasmaster.onrender.com/{API_TOKEN}"
