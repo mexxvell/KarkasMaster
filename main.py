@@ -662,7 +662,7 @@ def self_ping():
             logger.info("Self-ping успешен")
         except Exception as e:
             logger.error(f"Ошибка self-ping: {str(e)}")
-        threading.Event().wait(500)  # <- Исправлено: threading.Event() вместо Event()
+        threading.Event().wait(300)  # <- Исправлено: threading.Event() вместо Event()
         
 if __name__ == '__main__':
     # Запускаем self_ping в отдельном потоке
